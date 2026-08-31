@@ -25,3 +25,10 @@ float NoiseInjector::applyStuck(float value, bool triggerStuck, float stuckValue
 	}
 	return value;
 }
+
+float NoiseInjector::applyDrift(float value, bool triggerDrift, float driftRate, int samplesSinceStart) {
+    if (triggerDrift) {
+        return value + (driftRate * samplesSinceStart);
+    }
+    return value;
+}

@@ -12,7 +12,8 @@ int main() {
     enum class AnomalyType {
         None,
         Spike,
-        Stuck
+        Stuck,
+        Drift
     };
 
     if (!glfwInit())
@@ -47,6 +48,8 @@ int main() {
     int stuckStart = 250;
     int stuckDuration = 50;
 	float stuckValue = 0.0f;
+	float driftRate = 0.01f;
+    int driftStart = 250;
     AnomalyType selectedAnomaly = AnomalyType::None;
 
     while (!glfwWindowShouldClose(window)) {
@@ -64,6 +67,7 @@ int main() {
             phaseSlider = 0.0f;
             noiseSlider = 0.1f;
             spikeMagnitude = 3.0f;
+			selectedAnomaly = AnomalyType::None;
         }
 
         ImGui::SliderFloat("Frequency (Hz)", &freqSlider, 0.1f, 10.0f);
@@ -77,6 +81,8 @@ int main() {
         ImGui::RadioButton("Spike", &anomalyChoice, (int)AnomalyType::Spike);
         ImGui::SameLine();
         ImGui::RadioButton("Stuck", &anomalyChoice, (int)AnomalyType::Stuck);
+        ImGui::SameLine();
+        ImGui::RadioButton("Drift", &anomalyChoice, (int)AnomalyType::Drift);
         selectedAnomaly = (AnomalyType)anomalyChoice;
 
         if (selectedAnomaly == AnomalyType::Spike) {
@@ -86,6 +92,11 @@ int main() {
         if (selectedAnomaly == AnomalyType::Stuck) {
             ImGui::SliderInt("Stuck Start", &stuckStart, 0, 499);
             ImGui::SliderInt("Stuck Duration", &stuckDuration, 1, 200);
+        }
+
+        if (selectedAnomaly == AnomalyType::Drift) {
+            ImGui::SliderInt("Drift Start", &driftStart, 0, 499);
+            ImGui::SliderFloat("Drift Rate", &driftRate, 0.001f, 0.1f);
         }
 
         gen.setFrequency(freqSlider);
@@ -107,6 +118,10 @@ int main() {
 				stuckValue = noisy;
 			}
 			noisy = noise.applyStuck(noisy, isStuck, stuckValue);
+
+			bool isDrifting = ((selectedAnomaly == AnomalyType::Drift) && (i >= driftStart));
+			int samplesSinceStart = isDrifting ? (i - driftStart) : 0;
+			noisy = noise.applyDrift(noisy, isDrifting, driftRate, samplesSinceStart);
 
             signal.push_back(noisy);
         }
