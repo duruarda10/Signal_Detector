@@ -152,9 +152,11 @@
     <ClCompile Include="implot\implot.cpp" />
     <ClCompile Include="implot\implot_items.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="NoiseInjector.cpp" />
     <ClCompile Include="SineGenerator.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="NoiseInjector.h" />
     <ClInclude Include="SineGenerator.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

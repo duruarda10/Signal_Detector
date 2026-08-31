@@ -3,5 +3,5 @@
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
-  <Project Path="Signal_Detector/Signal_Detector.vcxproj" />
+  <Project Path="Signal_Detector/Signal_Detector.vcxproj" Id="761616ac-b604-44b8-839c-2bdc7b417604" />
 </Solution>

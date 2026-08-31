@@ -3,6 +3,7 @@
 #include "imgui_impl_opengl3.h"
 #include "implot.h"
 #include "SineGenerator.h"
+#include "NoiseInjector.h"
 
 #include <GLFW/glfw3.h>
 #include <vector>
@@ -29,11 +30,13 @@ int main() {
     ImGui_ImplOpenGL3_Init(glsl_version);
 
     SineGenerator gen(2.0f, 1.0f, 100.0f);
+    NoiseInjector noise(0.1f);
     std::vector<float> signal;
 
     float freqSlider = 2.0f;
     float ampSlider = 1.0f;
     float phaseSlider = 0.0f;
+    float noiseSlider = 0.1f;
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
@@ -47,15 +50,17 @@ int main() {
         ImGui::SliderFloat("Frequency (Hz)", &freqSlider, 0.1f, 10.0f);
         ImGui::SliderFloat("Amplitude", &ampSlider, 0.1f, 5.0f);
         ImGui::SliderFloat("Phase", &phaseSlider, 0.0f, 6.2832f);
+        ImGui::SliderFloat("Noise Level", &noiseSlider, 0.001f, 1.0f);
 
         gen.setFrequency(freqSlider);
         gen.setAmplitude(ampSlider);
         gen.setPhase(phaseSlider);
+        noise.setStdDev(noiseSlider);
         gen.reset();
 
         signal.clear();
         for (int i = 0; i < 500; i++) {
-            signal.push_back(gen.getNextSample());
+            signal.push_back(noise.apply(gen.getNextSample()));
         }
 
         if (ImPlot::BeginPlot("Sine Wave")) {
