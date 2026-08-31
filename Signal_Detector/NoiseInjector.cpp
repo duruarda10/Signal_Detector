@@ -18,3 +18,10 @@ float NoiseInjector::applySpike(float value, bool triggerSpike, float spikeMagni
     }
     return value;
 }
+
+float NoiseInjector::applyStuck(float value, bool triggerStuck, float stuckValue) {
+	if (triggerStuck) {
+		return stuckValue;
+	}
+	return value;
+}

@@ -9,6 +9,12 @@
 #include <vector>
 
 int main() {
+    enum class AnomalyType {
+        None,
+        Spike,
+        Stuck
+    };
+
     if (!glfwInit())
         return -1;
 
@@ -37,8 +43,11 @@ int main() {
     float ampSlider = 1.0f;
     float phaseSlider = 0.0f;
 	float noiseSlider = 0.1f;
-    bool triggerSpike = false;
     float spikeMagnitude = 3.0f;
+    int stuckStart = 250;
+    int stuckDuration = 50;
+	float stuckValue = 0.0f;
+    AnomalyType selectedAnomaly = AnomalyType::None;
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
@@ -54,7 +63,6 @@ int main() {
             ampSlider = 1.0f;
             phaseSlider = 0.0f;
             noiseSlider = 0.1f;
-            triggerSpike = false;
             spikeMagnitude = 3.0f;
         }
 
@@ -62,8 +70,23 @@ int main() {
         ImGui::SliderFloat("Amplitude", &ampSlider, 0.1f, 5.0f);
         ImGui::SliderFloat("Phase", &phaseSlider, 0.0f, 6.2832f);
         ImGui::SliderFloat("Noise", &noiseSlider, 0.001f, 1.0f);
-        ImGui::SliderFloat("Spike Magnitude", &spikeMagnitude, 0.5f, 10.0f);
-        ImGui::Checkbox("Trigger Spike", &triggerSpike);
+        
+        int anomalyChoice = (int)selectedAnomaly;
+        ImGui::RadioButton("None", &anomalyChoice, (int)AnomalyType::None);
+        ImGui::SameLine();
+        ImGui::RadioButton("Spike", &anomalyChoice, (int)AnomalyType::Spike);
+        ImGui::SameLine();
+        ImGui::RadioButton("Stuck", &anomalyChoice, (int)AnomalyType::Stuck);
+        selectedAnomaly = (AnomalyType)anomalyChoice;
+
+        if (selectedAnomaly == AnomalyType::Spike) {
+            ImGui::SliderFloat("Spike Magnitude", &spikeMagnitude, 0.5f, 10.0f);
+        }
+
+        if (selectedAnomaly == AnomalyType::Stuck) {
+            ImGui::SliderInt("Stuck Start", &stuckStart, 0, 499);
+            ImGui::SliderInt("Stuck Duration", &stuckDuration, 1, 200);
+        }
 
         gen.setFrequency(freqSlider);
         gen.setAmplitude(ampSlider);
@@ -76,8 +99,14 @@ int main() {
             float clean = gen.getNextSample();
             float noisy = noise.apply(clean);
 
-            bool spikeSample = (triggerSpike && (i == 250));
+            bool spikeSample = ((selectedAnomaly == AnomalyType::Spike) && (i == 250));
             noisy = noise.applySpike(noisy, spikeSample, spikeMagnitude);
+
+            bool isStuck = (selectedAnomaly == AnomalyType::Stuck) && (i >= stuckStart) && (i < stuckStart + stuckDuration);
+			if (isStuck && (i == stuckStart)) {
+				stuckValue = noisy;
+			}
+			noisy = noise.applyStuck(noisy, isStuck, stuckValue);
 
             signal.push_back(noisy);
         }
