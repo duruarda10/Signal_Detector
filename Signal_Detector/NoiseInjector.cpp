@@ -11,3 +11,10 @@ float NoiseInjector::apply(float cleanValue) {
 void NoiseInjector::setStdDev(float stdDev) {
     dist = std::normal_distribution<float>(0.0f, stdDev);
 }
+
+float NoiseInjector::applySpike(float value, bool triggerSpike, float spikeMagnitude) {
+    if (triggerSpike) {
+        return value + spikeMagnitude;
+    }
+    return value;
+}

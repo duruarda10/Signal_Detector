@@ -24,7 +24,7 @@ int main() {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImPlot::CreateContext();
-    ImGui::StyleColorsDark();
+    ImGui::StyleColorsClassic();
 
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glsl_version);
@@ -37,6 +37,8 @@ int main() {
     float ampSlider = 1.0f;
     float phaseSlider = 0.0f;
 	float noiseSlider = 0.1f;
+    bool triggerSpike = false;
+    float spikeMagnitude = 3.0f;
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
@@ -47,11 +49,21 @@ int main() {
 
         ImGui::Begin("Signal Viewer");
 
+        if (ImGui::Button("Reset")) {
+            freqSlider = 2.0f;
+            ampSlider = 1.0f;
+            phaseSlider = 0.0f;
+            noiseSlider = 0.1f;
+            triggerSpike = false;
+            spikeMagnitude = 3.0f;
+        }
+
         ImGui::SliderFloat("Frequency (Hz)", &freqSlider, 0.1f, 10.0f);
         ImGui::SliderFloat("Amplitude", &ampSlider, 0.1f, 5.0f);
         ImGui::SliderFloat("Phase", &phaseSlider, 0.0f, 6.2832f);
         ImGui::SliderFloat("Noise", &noiseSlider, 0.001f, 1.0f);
-
+        ImGui::SliderFloat("Spike Magnitude", &spikeMagnitude, 0.5f, 10.0f);
+        ImGui::Checkbox("Trigger Spike", &triggerSpike);
 
         gen.setFrequency(freqSlider);
         gen.setAmplitude(ampSlider);
@@ -61,7 +73,13 @@ int main() {
 
         signal.clear();
         for (int i = 0; i < 500; i++) {
-            signal.push_back(noise.apply(gen.getNextSample()));
+            float clean = gen.getNextSample();
+            float noisy = noise.apply(clean);
+
+            bool spikeSample = (triggerSpike && (i == 250));
+            noisy = noise.applySpike(noisy, spikeSample, spikeMagnitude);
+
+            signal.push_back(noisy);
         }
 
         if (ImPlot::BeginPlot("Sine Wave")) {
