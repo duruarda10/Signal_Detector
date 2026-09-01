@@ -51,12 +51,18 @@
     <ClCompile Include="NoiseInjector.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="SignalPipeline.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="SineGenerator.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="NoiseInjector.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="SignalPipeline.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

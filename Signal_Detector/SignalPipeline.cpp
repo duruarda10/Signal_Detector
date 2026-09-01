@@ -1,0 +1,57 @@
+#include "SignalPipeline.h"
+
+void generateSignal(std::vector<float>& signal, SineGenerator& gen, NoiseInjector& noise,
+    int bufferSize, AnomalyType selectedAnomaly,
+    int spikeStart, float spikeMagnitude,
+    int stuckStart, int stuckDuration,
+    float driftRate, int driftStart) {
+
+    gen.reset();
+    signal.clear();
+    float stuckValue = 0.0f;
+
+    for (int i = 0; i < bufferSize; i++) {
+        float clean = gen.getNextSample();
+        float noisy = noise.apply(clean);
+
+        bool spikeThisSample = (selectedAnomaly == AnomalyType::Spike) && (i == spikeStart);
+        noisy = noise.applySpike(noisy, spikeThisSample, spikeMagnitude);
+
+        bool isStuck = (selectedAnomaly == AnomalyType::Stuck) && (i >= stuckStart) && (i < stuckStart + stuckDuration);
+        if (isStuck && i == stuckStart) {
+            stuckValue = noisy;
+        }
+        noisy = noise.applyStuck(noisy, isStuck, stuckValue);
+
+        bool isDrifting = (selectedAnomaly == AnomalyType::Drift) && (i >= driftStart);
+        int samplesSinceDriftStart = isDrifting ? (i - driftStart) : 0;
+        noisy = noise.applyDrift(noisy, isDrifting, driftRate, samplesSinceDriftStart);
+
+        signal.push_back(noisy);
+    }
+}
+
+void randomizeAnomaly(std::mt19937& randomGen, int bufferSize, AnomalyType& selectedAnomaly,
+    int& spikeStart, float& spikeMagnitude,
+    int& stuckStart, int& stuckDuration,
+    float& driftRate, int& driftStart) {
+
+    std::uniform_int_distribution<int> anomalyType(0, 3);
+    selectedAnomaly = (AnomalyType)anomalyType(randomGen);
+
+    std::uniform_int_distribution<int> anomalyStart(0, bufferSize - 1);
+    int randomStart = anomalyStart(randomGen);
+
+    spikeStart = randomStart;
+    stuckStart = randomStart;
+    driftStart = randomStart;
+
+    std::uniform_real_distribution<float> anomalyMagnitude(0.5f, 10.0f);
+    spikeMagnitude = anomalyMagnitude(randomGen);
+
+    std::uniform_int_distribution<int> anomalyDuration(50, 2000);
+    stuckDuration = anomalyDuration(randomGen);
+
+    std::uniform_real_distribution<float> anomalyRate(0.001f, 0.1f);
+    driftRate = anomalyRate(randomGen);
+}
