@@ -5,6 +5,7 @@
 #include "SineGenerator.h"
 #include "NoiseInjector.h"
 #include "SignalPipeline.h"
+#include "FaultDetector.h"
 
 #include <GLFW/glfw3.h>
 #include <vector>
@@ -41,9 +42,18 @@ int main() {
     SineGenerator gen(2.0f, 1.0f, 100.0f);
     NoiseInjector noise(0.1f);
     std::vector<float> signal;
+    std::vector<bool> isAnomaly;
 
     std::random_device rd;
     std::mt19937 randomGen(rd());
+
+    FaultDetector detector;
+    float thresholdMin = -1.5f;
+    float thresholdMax = 1.5f;
+    int movingAvgWindow = 50;
+    float movingAvgThreshold = 1.5f;
+    std::vector<bool> thresholdFlags;
+    std::vector<bool> movingAvgFlags;
 
     const float sampleRate = 100.0f;
     const float durationSeconds = 300.0f;
@@ -52,7 +62,7 @@ int main() {
     float freqSlider = 2.0f;
     float ampSlider = 1.0f;
     float phaseSlider = 0.0f;
-    float noiseSlider = 0.05f;
+    float noiseSlider = 0.1f;
 
     int spikeStart = bufferSize / 2;
     float spikeMagnitude = 3.0f;
@@ -85,7 +95,7 @@ int main() {
         ImGui::RadioButton("Randomized", &modeChoice, (int)SignalMode::Randomized);
         selectedMode = (SignalMode)modeChoice;
 
-        ImGui::Separator;
+        ImGui::Separator();
 
         if (ImGui::Button("Reset")) {
             freqSlider = 2.0f;
@@ -111,6 +121,11 @@ int main() {
             ImGui::SameLine();
             ImGui::RadioButton("Drift", &anomalyChoice, (int)AnomalyType::Drift);
             selectedAnomaly = (AnomalyType)anomalyChoice;
+
+            ImGui::SliderFloat("Threshold Min", &thresholdMin, -5.0f, 0.0f);
+            ImGui::SliderFloat("Threshold Max", &thresholdMax, 0.0f, 5.0f);
+            ImGui::SliderInt("Moving Avg Window", &movingAvgWindow, 5, 500);
+            ImGui::SliderFloat("Moving Avg Threshold", &movingAvgThreshold, 0.1f, 3.0f);
 
             if (selectedAnomaly == AnomalyType::Spike) {
                 ImGui::SliderInt("Spike Start", &spikeStart, 0, bufferSize - 1);
@@ -149,24 +164,36 @@ int main() {
                 shouldFocusView = true;
             }
 
-            generateSignal(signal, gen, noise, bufferSize, type,
+            generateSignal(signal, isAnomaly, gen, noise, bufferSize, type,
                 spikeStartToUse, spikeMagnitudeToUse,
                 stuckStartToUse, stuckDurationToUse,
                 driftRateToUse, driftStartToUse);
+
+            thresholdFlags.clear();
+            movingAvgFlags.clear();
+            for (int i = 0; i < signal.size(); i++) {
+                bool tFlag = detector.checkThreshold(signal[i], thresholdMin, thresholdMax);
+                thresholdFlags.push_back(tFlag);
+
+                bool mFlag = detector.checkMovingAverage(signal, i, movingAvgWindow, movingAvgThreshold);
+                movingAvgFlags.push_back(mFlag);
+            }
         }
 
-        if (type != AnomalyType::None) {
-            const char* anomalyName = "";
-            switch (type) {
-            case AnomalyType::Spike: anomalyName = "Spike"; break;
-            case AnomalyType::Stuck: anomalyName = "Stuck"; break;
-            case AnomalyType::Drift: anomalyName = "Drift"; break;
-            default: anomalyName = "None"; break;
+        if (selectedMode == SignalMode::Randomized) {
+            if (type != AnomalyType::None) {
+                const char* anomalyName = "";
+                switch (type) {
+                case AnomalyType::Spike: anomalyName = "Spike"; break;
+                case AnomalyType::Stuck: anomalyName = "Stuck"; break;
+                case AnomalyType::Drift: anomalyName = "Drift"; break;
+                default: anomalyName = "None"; break;
+                }
+                ImGui::Text("Anomaly: %s at sample %d", anomalyName, anomalyStart);
             }
-            ImGui::Text("Anomaly: %s at sample %d", anomalyName, anomalyStart);
-        }
-        else {
-            ImGui::Text("Anomaly: None");
+            else {
+                ImGui::Text("Anomaly: None");
+            }
         }
 
         if (ImPlot::BeginPlot("Sine Wave", ImVec2(-1, 600))) {
@@ -183,6 +210,28 @@ int main() {
             }
 
             ImPlot::PlotLine("signal", signal.data(), (int)signal.size());
+
+            std::vector<double> tFlagX, tFlagY;
+            for (int i = 0; i < (int)thresholdFlags.size(); i++) {
+                if (thresholdFlags[i]) {
+                    tFlagX.push_back(i);
+                    tFlagY.push_back(signal[i]);
+                }
+            }
+            if (!tFlagX.empty()) {
+                ImPlot::PlotScatter("Threshold Detected", tFlagX.data(), tFlagY.data(), (int)tFlagX.size());
+            }
+
+            std::vector<double> mFlagX, mFlagY;
+            for (int i = 0; i < (int)movingAvgFlags.size(); i++) {
+                if (movingAvgFlags[i]) {
+                    mFlagX.push_back(i);
+                    mFlagY.push_back(signal[i]);
+                }
+            }
+            if (!mFlagX.empty()) {
+                ImPlot::PlotScatter("Moving Avg Detected", mFlagX.data(), mFlagY.data(), (int)mFlagX.size());
+            }
 
             if (type != AnomalyType::None) {
                 double markerX = (double)anomalyStart;

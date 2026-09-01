@@ -1,10 +1,10 @@
 #include "SignalPipeline.h"
 
-void generateSignal(std::vector<float>& signal, SineGenerator& gen, NoiseInjector& noise,
+void generateSignal(std::vector<float>& signal, std::vector<bool>& isAnomaly, SineGenerator& gen, NoiseInjector& noise,
     int bufferSize, AnomalyType selectedAnomaly,
     int spikeStart, float spikeMagnitude,
     int stuckStart, int stuckDuration,
-    float driftRate, int driftStart) {
+    float driftRate, int driftStart){
 
     gen.reset();
     signal.clear();
@@ -27,6 +27,9 @@ void generateSignal(std::vector<float>& signal, SineGenerator& gen, NoiseInjecto
         int samplesSinceDriftStart = isDrifting ? (i - driftStart) : 0;
         noisy = noise.applyDrift(noisy, isDrifting, driftRate, samplesSinceDriftStart);
 
+        bool anomalousSample = (spikeThisSample || isStuck || isDrifting);
+        
+        isAnomaly.push_back(anomalousSample);
         signal.push_back(noisy);
     }
 }
