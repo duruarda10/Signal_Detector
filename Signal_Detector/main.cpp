@@ -6,10 +6,13 @@
 #include "NoiseInjector.h"
 #include "SignalPipeline.h"
 #include "FaultDetector.h"
+#include "FeatureExtractor.h"
 
 #include <GLFW/glfw3.h>
 #include <vector>
 #include <random>
+#include <fstream>
+#include <cstdlib>
 
 int anomalyStart = 0;
 AnomalyType type = AnomalyType::None;
@@ -43,6 +46,7 @@ int main() {
     NoiseInjector noise(0.1f);
     std::vector<float> signal;
     std::vector<bool> isAnomaly;
+    std::vector<FeatureVector> features;
 
     std::random_device rd;
     std::mt19937 randomGen(rd());
@@ -233,6 +237,30 @@ int main() {
                     bool flagged = spikeFlag || stuckFlag;
                     rateFlags.push_back(flagged);
                 }
+            }
+
+            features = extractFeatures(signal, 50);
+
+        }
+
+        if (ImGui::Button("Export Features to CSV")) {
+            std::ofstream file("features.csv");
+            if (!file.is_open()) {
+                ImGui::Text("Failed to open file");
+            }
+            else {
+                file << "index,rawValue,rollingAverage,rollingStdDev,rateOfChange,zScore,isAnomaly\n";
+                for (int i = 0; i < (int)features.size(); i++) {
+                    file << i << ","
+                        << features[i].rawValue << ","
+                        << features[i].rollingAverage << ","
+                        << features[i].rollingStdDev << ","
+                        << features[i].rateOfChange << ","
+                        << features[i].zScore << ","
+                        << (isAnomaly[i] ? 1 : 0) << "\n";
+                }
+                file.close();
+				system("start features.csv");
             }
         }
 
