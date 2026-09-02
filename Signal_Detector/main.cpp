@@ -50,10 +50,15 @@ int main() {
     FaultDetector detector;
     float thresholdMin = -1.5f;
     float thresholdMax = 1.5f;
+    std::vector<bool> thresholdFlags;
+    
     int movingAvgWindow = 50;
     float movingAvgThreshold = 1.5f;
-    std::vector<bool> thresholdFlags;
     std::vector<bool> movingAvgFlags;
+
+	int zScoreWindow = 50;
+	float zScoreThreshold = 3.0f;
+	std::vector<bool> zScoreFlags;
 
     const float sampleRate = 100.0f;
     const float durationSeconds = 300.0f;
@@ -150,6 +155,8 @@ int main() {
         ImGui::RadioButton("Threshold", &detectorChoice, (int)DetectorMethod::Threshold);
         ImGui::SameLine();
         ImGui::RadioButton("Moving Average", &detectorChoice, (int)DetectorMethod::MovingAverage);
+		ImGui::SameLine();
+		ImGui::RadioButton("Z-Score", &detectorChoice, (int)DetectorMethod::ZScore);
         selectedDetector = (DetectorMethod)detectorChoice;
 
         if (selectedDetector == DetectorMethod::Threshold) {
@@ -160,6 +167,11 @@ int main() {
         if (selectedDetector == DetectorMethod::MovingAverage) {
             ImGui::SliderInt("Moving Avg Window", &movingAvgWindow, 5, 500);
             ImGui::SliderFloat("Moving Avg Threshold", &movingAvgThreshold, 0.1f, 3.0f);
+        }
+
+        if (selectedDetector == DetectorMethod::ZScore) {
+            ImGui::SliderInt("Z-Score Window", &zScoreWindow, 5, 500);
+            ImGui::SliderFloat("Z-Score Threshold", &zScoreThreshold, 0.5f, 5.0f);
         }
 
         if (ImGui::Button("Generate Signal")) {
@@ -191,6 +203,7 @@ int main() {
 
             thresholdFlags.clear();
             movingAvgFlags.clear();
+            zScoreFlags.clear();
             for (int i = 0; i < signal.size(); i++) {
                 if (selectedDetector == DetectorMethod::Threshold) {
                     bool tFlag = detector.checkThreshold(signal[i], thresholdMin, thresholdMax);
@@ -199,6 +212,10 @@ int main() {
                 if (selectedDetector == DetectorMethod::MovingAverage) {
                     bool mFlag = detector.checkMovingAverage(signal, i, movingAvgWindow, movingAvgThreshold);
                     movingAvgFlags.push_back(mFlag);
+                }
+                if (selectedDetector == DetectorMethod::ZScore) {
+                    bool zFlag = detector.checkZScore(signal, i, zScoreWindow, zScoreThreshold);
+                    zScoreFlags.push_back(zFlag);
                 }
             }
         }
@@ -258,6 +275,18 @@ int main() {
                     ImPlot::PlotScatter("Moving Avg Detected", mFlagX.data(), mFlagY.data(), (int)mFlagX.size());
                 }
             }
+			if (selectedDetector == DetectorMethod::ZScore) {
+				std::vector<double> zFlagX, zFlagY;
+				for (int i = 0; i < (int)zScoreFlags.size(); i++) {
+					if (zScoreFlags[i]) {
+						zFlagX.push_back(i);
+						zFlagY.push_back(signal[i]);
+					}
+				}
+				if (!zFlagX.empty()) {
+					ImPlot::PlotScatter("Z-Score Detected", zFlagX.data(), zFlagY.data(), (int)zFlagX.size());
+				}
+			}
 
             if (type != AnomalyType::None) {
                 double markerX = (double)anomalyStart;
