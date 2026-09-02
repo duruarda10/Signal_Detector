@@ -39,3 +39,19 @@ bool FaultDetector::checkZScore(const std::vector<float>& signal, int index, int
 	float zScore = (signal[index] - mean) / stdDev;
 	return (std::abs(zScore) > zThreshold);
 }
+
+bool FaultDetector::checkRateSpike(const std::vector<float>& signal, int index, float rateThreshold) {
+	if (index < 1) return false;
+	float rate = std::abs(signal[index] - signal[index - 1]);
+	return rate > rateThreshold;
+}
+
+bool FaultDetector::checkRateStuck(const std::vector<float>& signal, int index, int windowSize, float rateThreshold) {
+	if (index < windowSize) return false;
+
+	for (int i = index - windowSize + 1; i <= index; i++) {
+		float rate = std::abs(signal[i] - signal[i - 1]);
+		if (rate > rateThreshold) return false;
+	}
+	return true;
+}

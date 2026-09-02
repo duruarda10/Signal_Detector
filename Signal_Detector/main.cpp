@@ -47,19 +47,6 @@ int main() {
     std::random_device rd;
     std::mt19937 randomGen(rd());
 
-    FaultDetector detector;
-    float thresholdMin = -1.5f;
-    float thresholdMax = 1.5f;
-    std::vector<bool> thresholdFlags;
-    
-    int movingAvgWindow = 50;
-    float movingAvgThreshold = 1.5f;
-    std::vector<bool> movingAvgFlags;
-
-	int zScoreWindow = 50;
-	float zScoreThreshold = 3.0f;
-	std::vector<bool> zScoreFlags;
-
     const float sampleRate = 100.0f;
     const float durationSeconds = 300.0f;
     const int bufferSize = (int)(sampleRate * durationSeconds);
@@ -78,6 +65,24 @@ int main() {
     float driftRate = 0.01f;
     int driftStart = bufferSize / 2;
     int driftDuration = 500;
+
+    FaultDetector detector;
+    float thresholdMin = -1.5f;
+    float thresholdMax = 1.5f;
+    std::vector<bool> thresholdFlags;
+
+    int movingAvgWindow = 50;
+    float movingAvgThreshold = 1.5f;
+    std::vector<bool> movingAvgFlags;
+
+    int zScoreWindow = 50;
+    float zScoreThreshold = 3.0f;
+    std::vector<bool> zScoreFlags;
+
+    float rateSpikeThreshold = 1.0f;
+    int rateStuckWindow = 50;
+    float rateStuckThreshold = 0.01f;
+    std::vector<bool> rateFlags;
 
     AnomalyType selectedAnomaly = AnomalyType::None;
     SignalMode selectedMode = SignalMode::Manual;
@@ -128,12 +133,7 @@ int main() {
             ImGui::SameLine();
             ImGui::RadioButton("Drift", &anomalyChoice, (int)AnomalyType::Drift);
             selectedAnomaly = (AnomalyType)anomalyChoice;
-
-            ImGui::SliderFloat("Threshold Min", &thresholdMin, -5.0f, 0.0f);
-            ImGui::SliderFloat("Threshold Max", &thresholdMax, 0.0f, 5.0f);
-            ImGui::SliderInt("Moving Avg Window", &movingAvgWindow, 5, 500);
-            ImGui::SliderFloat("Moving Avg Threshold", &movingAvgThreshold, 0.1f, 3.0f);
-
+          
             if (selectedAnomaly == AnomalyType::Spike) {
                 ImGui::SliderInt("Spike Start", &spikeStart, 0, bufferSize - 1);
                 ImGui::SliderFloat("Spike Magnitude", &spikeMagnitude, 0.5f, 10.0f);
@@ -157,6 +157,8 @@ int main() {
         ImGui::RadioButton("Moving Average", &detectorChoice, (int)DetectorMethod::MovingAverage);
 		ImGui::SameLine();
 		ImGui::RadioButton("Z-Score", &detectorChoice, (int)DetectorMethod::ZScore);
+        ImGui::SameLine();
+        ImGui::RadioButton("Rate", &detectorChoice, (int)DetectorMethod::Rate);
         selectedDetector = (DetectorMethod)detectorChoice;
 
         if (selectedDetector == DetectorMethod::Threshold) {
@@ -172,6 +174,12 @@ int main() {
         if (selectedDetector == DetectorMethod::ZScore) {
             ImGui::SliderInt("Z-Score Window", &zScoreWindow, 5, 500);
             ImGui::SliderFloat("Z-Score Threshold", &zScoreThreshold, 0.5f, 5.0f);
+        }
+
+        if (selectedDetector == DetectorMethod::Rate) {
+            ImGui::SliderFloat("Rate Spike Threshold", &rateSpikeThreshold, 0.1f, 5.0f);
+            ImGui::SliderInt("Rate Stuck Window", &rateStuckWindow, 5, 500);
+            ImGui::SliderFloat("Rate Stuck Threshold", &rateStuckThreshold, 0.001f, 0.5f);
         }
 
         if (ImGui::Button("Generate Signal")) {
@@ -204,6 +212,8 @@ int main() {
             thresholdFlags.clear();
             movingAvgFlags.clear();
             zScoreFlags.clear();
+            rateFlags.clear();
+
             for (int i = 0; i < signal.size(); i++) {
                 if (selectedDetector == DetectorMethod::Threshold) {
                     bool tFlag = detector.checkThreshold(signal[i], thresholdMin, thresholdMax);
@@ -216,6 +226,12 @@ int main() {
                 if (selectedDetector == DetectorMethod::ZScore) {
                     bool zFlag = detector.checkZScore(signal, i, zScoreWindow, zScoreThreshold);
                     zScoreFlags.push_back(zFlag);
+                }
+                if (selectedDetector == DetectorMethod::Rate) {
+                    bool spikeFlag = detector.checkRateSpike(signal, i, rateSpikeThreshold);
+					bool stuckFlag = detector.checkRateStuck(signal, i, rateStuckWindow, rateStuckThreshold);
+                    bool flagged = spikeFlag || stuckFlag;
+                    rateFlags.push_back(flagged);
                 }
             }
         }
@@ -285,6 +301,19 @@ int main() {
 				}
 				if (!zFlagX.empty()) {
 					ImPlot::PlotScatter("Z-Score Detected", zFlagX.data(), zFlagY.data(), (int)zFlagX.size());
+				}
+			}
+
+            if (selectedDetector == DetectorMethod::Rate) {
+				std::vector<double> rFlagX, rFlagY;
+				for (int i = 0; i < (int)rateFlags.size(); i++) {
+					if (rateFlags[i]) {
+						rFlagX.push_back(i);
+						rFlagY.push_back(signal[i]);
+					}
+				}
+				if (!rFlagX.empty()) {
+					ImPlot::PlotScatter("Rate Detected", rFlagX.data(), rFlagY.data(), (int)rFlagX.size());
 				}
 			}
 
