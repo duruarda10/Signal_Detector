@@ -7,6 +7,7 @@
 #include "SignalPipeline.h"
 #include "FaultDetector.h"
 #include "FeatureExtractor.h"
+#include "DBSCAN.h"
 
 #include <GLFW/glfw3.h>
 #include <vector>
@@ -52,7 +53,7 @@ int main() {
     std::mt19937 randomGen(rd());
 
     const float sampleRate = 100.0f;
-    const float durationSeconds = 300.0f;
+    const float durationSeconds = 10.0f;
     const int bufferSize = (int)(sampleRate * durationSeconds);
 
     float freqSlider = 2.0f;
@@ -87,6 +88,10 @@ int main() {
     int rateStuckWindow = 50;
     float rateStuckThreshold = 0.01f;
     std::vector<bool> rateFlags;
+
+	float dbscanEpsilon = 1.0f;
+	int dbscanMinPts = 5;
+	std::vector<int> dbscanLabels;
 
     AnomalyType selectedAnomaly = AnomalyType::None;
     SignalMode selectedMode = SignalMode::Manual;
@@ -186,6 +191,9 @@ int main() {
             ImGui::SliderFloat("Rate Stuck Threshold", &rateStuckThreshold, 0.001f, 0.5f);
         }
 
+        ImGui::SliderFloat("DBSCAN Epsilon", &dbscanEpsilon, 0.1f, 5.0f);
+        ImGui::SliderInt("DBSCAN MinPts", &dbscanMinPts, 2, 20);
+
         if (ImGui::Button("Generate Signal")) {
             gen.setFrequency(freqSlider);
             gen.setAmplitude(ampSlider);
@@ -262,6 +270,10 @@ int main() {
                 file.close();
 				system("start features.csv");
             }
+        }
+
+        if(ImGui::Button("Run DBSCAN")) {
+            dbscanLabels = runDBSCAN(features, dbscanEpsilon, dbscanMinPts);
         }
 
         if (selectedMode == SignalMode::Randomized) {
@@ -348,6 +360,19 @@ int main() {
             if (type != AnomalyType::None) {
                 double markerX = (double)anomalyStart;
                 ImPlot::PlotInfLines("Anomaly Start", &markerX, 1);
+            }
+
+            if (!dbscanLabels.empty()) {
+				std::vector<double> noiseX, noiseY;
+                for (int i = 0; i < (int)dbscanLabels.size(); i++) {
+                    if (dbscanLabels[i] == -1) {
+                        noiseX.push_back(i);
+                        noiseY.push_back(signal[i]);
+                    }
+                }
+                if (!noiseX.empty()) {
+                    ImPlot::PlotScatter("DBSCAN Noise", noiseX.data(), noiseY.data(), (int)noiseX.size());
+                }
             }
 
             ImPlot::EndPlot();

@@ -143,6 +143,7 @@
     </Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="DBSCAN.cpp" />
     <ClCompile Include="FaultDetector.cpp" />
     <ClCompile Include="FeatureExtractor.cpp" />
     <ClCompile Include="imgui\backends\imgui_impl_glfw.cpp" />
@@ -156,13 +157,16 @@
     <ClCompile Include="implot\implot_items.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="NoiseInjector.cpp" />
+    <ClCompile Include="Normalizer.cpp" />
     <ClCompile Include="SignalPipeline.cpp" />
     <ClCompile Include="SineGenerator.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="DBSCAN.h" />
     <ClInclude Include="FaultDetector.h" />
     <ClInclude Include="FeatureExtractor.h" />
     <ClInclude Include="NoiseInjector.h" />
+    <ClInclude Include="Normalizer.h" />
     <ClInclude Include="SignalPipeline.h" />
     <ClInclude Include="SineGenerator.h" />
   </ItemGroup>
