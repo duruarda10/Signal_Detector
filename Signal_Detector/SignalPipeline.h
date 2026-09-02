@@ -16,13 +16,13 @@ enum class AnomalyType {
     Drift
 };
 
-void generateSignal(std::vector<float>& signal, SineGenerator& gen, NoiseInjector& noise,
+void generateSignal(std::vector<float>& signal, std::vector<bool>& isAnomaly, SineGenerator& gen, NoiseInjector& noise,
     int bufferSize, AnomalyType selectedAnomaly,
     int spikeStart, float spikeMagnitude,
     int stuckStart, int stuckDuration,
-    float driftRate, int driftStart);
+    float driftRate, int driftStart, int driftDuration);
 
 void randomizeAnomaly(std::mt19937& randomGen, int bufferSize, AnomalyType& selectedAnomaly,
     int& spikeStart, float& spikeMagnitude,
     int& stuckStart, int& stuckDuration,
-    float& driftRate, int& driftStart);
+    float& driftRate, int& driftStart, int& driftDuration);

@@ -143,6 +143,7 @@
     </Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="FaultDetector.cpp" />
     <ClCompile Include="imgui\backends\imgui_impl_glfw.cpp" />
     <ClCompile Include="imgui\backends\imgui_impl_opengl3.cpp" />
     <ClCompile Include="imgui\imgui.cpp" />
@@ -158,6 +159,7 @@
     <ClCompile Include="SineGenerator.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="FaultDetector.h" />
     <ClInclude Include="NoiseInjector.h" />
     <ClInclude Include="SignalPipeline.h" />
     <ClInclude Include="SineGenerator.h" />
