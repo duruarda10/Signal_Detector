@@ -76,6 +76,7 @@ int main() {
 
     AnomalyType selectedAnomaly = AnomalyType::None;
     SignalMode selectedMode = SignalMode::Manual;
+	DetectorMethod selectedDetector = DetectorMethod::Threshold;
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
@@ -145,6 +146,22 @@ int main() {
             }
         }
 
+        int detectorChoice = (int)selectedDetector;
+        ImGui::RadioButton("Threshold", &detectorChoice, (int)DetectorMethod::Threshold);
+        ImGui::SameLine();
+        ImGui::RadioButton("Moving Average", &detectorChoice, (int)DetectorMethod::MovingAverage);
+        selectedDetector = (DetectorMethod)detectorChoice;
+
+        if (selectedDetector == DetectorMethod::Threshold) {
+            ImGui::SliderFloat("Threshold Min", &thresholdMin, -5.0f, 0.0f);
+            ImGui::SliderFloat("Threshold Max", &thresholdMax, 0.0f, 5.0f);
+        }
+
+        if (selectedDetector == DetectorMethod::MovingAverage) {
+            ImGui::SliderInt("Moving Avg Window", &movingAvgWindow, 5, 500);
+            ImGui::SliderFloat("Moving Avg Threshold", &movingAvgThreshold, 0.1f, 3.0f);
+        }
+
         if (ImGui::Button("Generate Signal")) {
             gen.setFrequency(freqSlider);
             gen.setAmplitude(ampSlider);
@@ -175,11 +192,14 @@ int main() {
             thresholdFlags.clear();
             movingAvgFlags.clear();
             for (int i = 0; i < signal.size(); i++) {
-                bool tFlag = detector.checkThreshold(signal[i], thresholdMin, thresholdMax);
-                thresholdFlags.push_back(tFlag);
-
-                bool mFlag = detector.checkMovingAverage(signal, i, movingAvgWindow, movingAvgThreshold);
-                movingAvgFlags.push_back(mFlag);
+                if (selectedDetector == DetectorMethod::Threshold) {
+                    bool tFlag = detector.checkThreshold(signal[i], thresholdMin, thresholdMax);
+                    thresholdFlags.push_back(tFlag);
+                }
+                if (selectedDetector == DetectorMethod::MovingAverage) {
+                    bool mFlag = detector.checkMovingAverage(signal, i, movingAvgWindow, movingAvgThreshold);
+                    movingAvgFlags.push_back(mFlag);
+                }
             }
         }
 
@@ -214,26 +234,29 @@ int main() {
 
             ImPlot::PlotLine("signal", signal.data(), (int)signal.size());
 
-            std::vector<double> tFlagX, tFlagY;
-            for (int i = 0; i < (int)thresholdFlags.size(); i++) {
-                if (thresholdFlags[i]) {
-                    tFlagX.push_back(i);
-                    tFlagY.push_back(signal[i]);
+            if (selectedDetector == DetectorMethod::Threshold) {
+                std::vector<double> tFlagX, tFlagY;
+                for (int i = 0; i < (int)thresholdFlags.size(); i++) {
+                    if (thresholdFlags[i]) {
+                        tFlagX.push_back(i);
+                        tFlagY.push_back(signal[i]);
+                    }
+                }
+                if (!tFlagX.empty()) {
+                    ImPlot::PlotScatter("Threshold Detected", tFlagX.data(), tFlagY.data(), (int)tFlagX.size());
                 }
             }
-            if (!tFlagX.empty()) {
-                ImPlot::PlotScatter("Threshold Detected", tFlagX.data(), tFlagY.data(), (int)tFlagX.size());
-            }
-
-            std::vector<double> mFlagX, mFlagY;
-            for (int i = 0; i < (int)movingAvgFlags.size(); i++) {
-                if (movingAvgFlags[i]) {
-                    mFlagX.push_back(i);
-                    mFlagY.push_back(signal[i]);
+            if (selectedDetector == DetectorMethod::MovingAverage) {
+                std::vector<double> mFlagX, mFlagY;
+                for (int i = 0; i < (int)movingAvgFlags.size(); i++) {
+                    if (movingAvgFlags[i]) {
+                        mFlagX.push_back(i);
+                        mFlagY.push_back(signal[i]);
+                    }
                 }
-            }
-            if (!mFlagX.empty()) {
-                ImPlot::PlotScatter("Moving Avg Detected", mFlagX.data(), mFlagY.data(), (int)mFlagX.size());
+                if (!mFlagX.empty()) {
+                    ImPlot::PlotScatter("Moving Avg Detected", mFlagX.data(), mFlagY.data(), (int)mFlagX.size());
+                }
             }
 
             if (type != AnomalyType::None) {

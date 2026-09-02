@@ -1,6 +1,11 @@
 #pragma once
 #include <vector>
 
+enum class DetectorMethod {
+	Threshold,
+	MovingAverage
+};
+
 class FaultDetector {
 public:
 	bool checkThreshold(float value, float minVal, float maxVal);
