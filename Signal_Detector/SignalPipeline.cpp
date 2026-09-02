@@ -4,7 +4,7 @@ void generateSignal(std::vector<float>& signal, std::vector<bool>& isAnomaly, Si
     int bufferSize, AnomalyType selectedAnomaly,
     int spikeStart, float spikeMagnitude,
     int stuckStart, int stuckDuration,
-    float driftRate, int driftStart){
+    float driftRate, int driftStart, int driftDuration) {
 
     gen.reset();
     signal.clear();
@@ -23,7 +23,7 @@ void generateSignal(std::vector<float>& signal, std::vector<bool>& isAnomaly, Si
         }
         noisy = noise.applyStuck(noisy, isStuck, stuckValue);
 
-        bool isDrifting = (selectedAnomaly == AnomalyType::Drift) && (i >= driftStart);
+        bool isDrifting = (selectedAnomaly == AnomalyType::Drift) && (i >= driftStart) && (i < driftStart + driftDuration);
         int samplesSinceDriftStart = isDrifting ? (i - driftStart) : 0;
         noisy = noise.applyDrift(noisy, isDrifting, driftRate, samplesSinceDriftStart);
 
@@ -37,7 +37,7 @@ void generateSignal(std::vector<float>& signal, std::vector<bool>& isAnomaly, Si
 void randomizeAnomaly(std::mt19937& randomGen, int bufferSize, AnomalyType& selectedAnomaly,
     int& spikeStart, float& spikeMagnitude,
     int& stuckStart, int& stuckDuration,
-    float& driftRate, int& driftStart) {
+    float& driftRate, int& driftStart, int& driftDuration) {
 
     std::uniform_int_distribution<int> anomalyType(0, 3);
     selectedAnomaly = (AnomalyType)anomalyType(randomGen);
@@ -55,6 +55,9 @@ void randomizeAnomaly(std::mt19937& randomGen, int bufferSize, AnomalyType& sele
     std::uniform_int_distribution<int> anomalyDuration(50, 2000);
     stuckDuration = anomalyDuration(randomGen);
 
-    std::uniform_real_distribution<float> anomalyRate(0.001f, 0.1f);
+    std::uniform_real_distribution<float> anomalyRate(0.0001f, 0.002f);
     driftRate = anomalyRate(randomGen);
+
+	std::uniform_int_distribution<int> driftDurationDist(100, 1000);
+	driftDuration = driftDurationDist(randomGen);
 }

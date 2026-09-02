@@ -72,6 +72,7 @@ int main() {
 
     float driftRate = 0.01f;
     int driftStart = bufferSize / 2;
+    int driftDuration = 500;
 
     AnomalyType selectedAnomaly = AnomalyType::None;
     SignalMode selectedMode = SignalMode::Manual;
@@ -139,7 +140,8 @@ int main() {
 
             if (selectedAnomaly == AnomalyType::Drift) {
                 ImGui::SliderInt("Drift Start", &driftStart, 0, bufferSize - 1);
-                ImGui::SliderFloat("Drift Rate", &driftRate, 0.001f, 0.1f);
+                ImGui::SliderFloat("Drift Rate", &driftRate, 0.0001f, 0.01f);
+                ImGui::SliderInt("Drift Duration", &driftDuration, 50, 2000);
             }
         }
 
@@ -155,11 +157,12 @@ int main() {
             int driftStartToUse = driftStart;
             float spikeMagnitudeToUse = spikeMagnitude;
             float driftRateToUse = driftRate;
+			int driftDurationToUse = driftDuration;
 
             if (selectedMode == SignalMode::Randomized) {
                 randomizeAnomaly(randomGen, bufferSize, type, spikeStartToUse, spikeMagnitudeToUse,
                     stuckStartToUse, stuckDurationToUse,
-                    driftRateToUse, driftStartToUse);
+                    driftRateToUse, driftStartToUse, driftDurationToUse);
                 anomalyStart = spikeStartToUse;
                 shouldFocusView = true;
             }
@@ -167,7 +170,7 @@ int main() {
             generateSignal(signal, isAnomaly, gen, noise, bufferSize, type,
                 spikeStartToUse, spikeMagnitudeToUse,
                 stuckStartToUse, stuckDurationToUse,
-                driftRateToUse, driftStartToUse);
+                driftRateToUse, driftStartToUse, driftDurationToUse);
 
             thresholdFlags.clear();
             movingAvgFlags.clear();
