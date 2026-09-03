@@ -1,4 +1,7 @@
+#define _USE_MATH_DEFINES
+
 #include "SignalPipeline.h"
+#include <cmath>
 
 void generateSignal(std::vector<float>& signal, std::vector<bool>& isAnomaly, SineGenerator& gen, NoiseInjector& noise,
     int bufferSize, AnomalyType selectedAnomaly,
@@ -60,4 +63,18 @@ void randomizeAnomaly(std::mt19937& randomGen, int bufferSize, AnomalyType& sele
 
 	std::uniform_int_distribution<int> driftDurationDist(100, 1000);
 	driftDuration = driftDurationDist(randomGen);
+}
+
+void randomizeWave(std::mt19937& randomGen, float& frequency, float& amplitude, float& phase, float& noiseStdDev) {
+	std::uniform_real_distribution<float> freqDist(0.5f, 5.0f);
+	frequency = freqDist(randomGen);
+
+	std::uniform_real_distribution<float> ampDist(0.5f, 3.0f);
+	amplitude = ampDist(randomGen);
+
+	std::uniform_real_distribution<float> phaseDist(0.0f, 2.0f * M_PI);
+	phase = phaseDist(randomGen);
+
+	std::uniform_real_distribution<float> noiseDist(0.02f, 1.0f);
+	noiseStdDev = noiseDist(randomGen);
 }

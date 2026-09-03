@@ -5,7 +5,6 @@
 #include "SineGenerator.h"
 #include "NoiseInjector.h"
 #include "SignalPipeline.h"
-#include "FaultDetector.h"
 #include "FeatureExtractor.h"
 #include "DBSCAN.h"
 
@@ -52,14 +51,13 @@ int main() {
     std::random_device rd;
     std::mt19937 randomGen(rd());
 
-    const float sampleRate = 100.0f;
-    const float durationSeconds = 10.0f;
-    const int bufferSize = (int)(sampleRate * durationSeconds);
+    float dbscanEpsilon = 0.7f;
+    int dbscanMinPts = 5;
+    std::vector<int> dbscanLabels;
 
-    float freqSlider = 2.0f;
-    float ampSlider = 1.0f;
-    float phaseSlider = 0.0f;
-    float noiseSlider = 0.1f;
+    const float sampleRate = 100.0f;
+    const float durationSeconds = 300.0f;
+    const int bufferSize = (int)(sampleRate * durationSeconds);
 
     int spikeStart = bufferSize / 2;
     float spikeMagnitude = 3.0f;
@@ -70,32 +68,6 @@ int main() {
     float driftRate = 0.01f;
     int driftStart = bufferSize / 2;
     int driftDuration = 500;
-
-    FaultDetector detector;
-    float thresholdMin = -1.5f;
-    float thresholdMax = 1.5f;
-    std::vector<bool> thresholdFlags;
-
-    int movingAvgWindow = 50;
-    float movingAvgThreshold = 1.5f;
-    std::vector<bool> movingAvgFlags;
-
-    int zScoreWindow = 50;
-    float zScoreThreshold = 3.0f;
-    std::vector<bool> zScoreFlags;
-
-    float rateSpikeThreshold = 1.0f;
-    int rateStuckWindow = 50;
-    float rateStuckThreshold = 0.01f;
-    std::vector<bool> rateFlags;
-
-	float dbscanEpsilon = 1.0f;
-	int dbscanMinPts = 5;
-	std::vector<int> dbscanLabels;
-
-    AnomalyType selectedAnomaly = AnomalyType::None;
-    SignalMode selectedMode = SignalMode::Manual;
-	DetectorMethod selectedDetector = DetectorMethod::Threshold;
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
@@ -109,155 +81,52 @@ int main() {
         ImGui::SetNextWindowSize(io.DisplaySize);
 
         ImGui::Begin("Signal Viewer", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
-        
-		int modeChoice = (int)selectedMode;
-        ImGui::RadioButton("Manual", &modeChoice, (int)SignalMode::Manual);
-        ImGui::SameLine();
-        ImGui::RadioButton("Randomized", &modeChoice, (int)SignalMode::Randomized);
-        selectedMode = (SignalMode)modeChoice;
-
-        ImGui::Separator();
-
-        if (ImGui::Button("Reset")) {
-            freqSlider = 2.0f;
-            ampSlider = 1.0f;
-            phaseSlider = 0.0f;
-            noiseSlider = 0.1f;
-            spikeMagnitude = 3.0f;
-            selectedAnomaly = AnomalyType::None;
-        }
-
-        if (selectedMode == SignalMode::Manual) {
-            ImGui::SliderFloat("Frequency (Hz)", &freqSlider, 0.1f, 10.0f);
-            ImGui::SliderFloat("Amplitude", &ampSlider, 0.1f, 5.0f);
-            ImGui::SliderFloat("Phase", &phaseSlider, 0.0f, 6.2832f);
-            ImGui::SliderFloat("Noise", &noiseSlider, 0.001f, 1.0f);
-
-            int anomalyChoice = (int)selectedAnomaly;
-            ImGui::RadioButton("None", &anomalyChoice, (int)AnomalyType::None);
-            ImGui::SameLine();
-            ImGui::RadioButton("Spike", &anomalyChoice, (int)AnomalyType::Spike);
-            ImGui::SameLine();
-            ImGui::RadioButton("Stuck", &anomalyChoice, (int)AnomalyType::Stuck);
-            ImGui::SameLine();
-            ImGui::RadioButton("Drift", &anomalyChoice, (int)AnomalyType::Drift);
-            selectedAnomaly = (AnomalyType)anomalyChoice;
-          
-            if (selectedAnomaly == AnomalyType::Spike) {
-                ImGui::SliderInt("Spike Start", &spikeStart, 0, bufferSize - 1);
-                ImGui::SliderFloat("Spike Magnitude", &spikeMagnitude, 0.5f, 10.0f);
-            }
-
-            if (selectedAnomaly == AnomalyType::Stuck) {
-                ImGui::SliderInt("Stuck Start", &stuckStart, 0, bufferSize - 1);
-                ImGui::SliderInt("Stuck Duration", &stuckDuration, 1, 2000);
-            }
-
-            if (selectedAnomaly == AnomalyType::Drift) {
-                ImGui::SliderInt("Drift Start", &driftStart, 0, bufferSize - 1);
-                ImGui::SliderFloat("Drift Rate", &driftRate, 0.0001f, 0.01f);
-                ImGui::SliderInt("Drift Duration", &driftDuration, 50, 2000);
-            }
-        }
-
-        int detectorChoice = (int)selectedDetector;
-        ImGui::RadioButton("Threshold", &detectorChoice, (int)DetectorMethod::Threshold);
-        ImGui::SameLine();
-        ImGui::RadioButton("Moving Average", &detectorChoice, (int)DetectorMethod::MovingAverage);
-		ImGui::SameLine();
-		ImGui::RadioButton("Z-Score", &detectorChoice, (int)DetectorMethod::ZScore);
-        ImGui::SameLine();
-        ImGui::RadioButton("Rate", &detectorChoice, (int)DetectorMethod::Rate);
-        selectedDetector = (DetectorMethod)detectorChoice;
-
-        if (selectedDetector == DetectorMethod::Threshold) {
-            ImGui::SliderFloat("Threshold Min", &thresholdMin, -5.0f, 0.0f);
-            ImGui::SliderFloat("Threshold Max", &thresholdMax, 0.0f, 5.0f);
-        }
-
-        if (selectedDetector == DetectorMethod::MovingAverage) {
-            ImGui::SliderInt("Moving Avg Window", &movingAvgWindow, 5, 500);
-            ImGui::SliderFloat("Moving Avg Threshold", &movingAvgThreshold, 0.1f, 3.0f);
-        }
-
-        if (selectedDetector == DetectorMethod::ZScore) {
-            ImGui::SliderInt("Z-Score Window", &zScoreWindow, 5, 500);
-            ImGui::SliderFloat("Z-Score Threshold", &zScoreThreshold, 0.5f, 5.0f);
-        }
-
-        if (selectedDetector == DetectorMethod::Rate) {
-            ImGui::SliderFloat("Rate Spike Threshold", &rateSpikeThreshold, 0.1f, 5.0f);
-            ImGui::SliderInt("Rate Stuck Window", &rateStuckWindow, 5, 500);
-            ImGui::SliderFloat("Rate Stuck Threshold", &rateStuckThreshold, 0.001f, 0.5f);
-        }
 
         ImGui::SliderFloat("DBSCAN Epsilon", &dbscanEpsilon, 0.1f, 5.0f);
         ImGui::SliderInt("DBSCAN MinPts", &dbscanMinPts, 2, 20);
 
+        ImGui::Separator();
+
         if (ImGui::Button("Generate Signal")) {
-            gen.setFrequency(freqSlider);
-            gen.setAmplitude(ampSlider);
-            gen.setPhase(phaseSlider);
-            noise.setStdDev(noiseSlider);
+            float freqToUse, ampToUse, phaseToUse, noiseToUse;
+            randomizeWave(randomGen, freqToUse, ampToUse, phaseToUse, noiseToUse);
+
+            gen.setFrequency(freqToUse);
+            gen.setAmplitude(ampToUse);
+            gen.setPhase(phaseToUse);
+            noise.setStdDev(noiseToUse);
 
             int spikeStartToUse = spikeStart;
             int stuckStartToUse = stuckStart;
             int stuckDurationToUse = stuckDuration;
             int driftStartToUse = driftStart;
+            int driftDurationToUse = driftDuration;
             float spikeMagnitudeToUse = spikeMagnitude;
             float driftRateToUse = driftRate;
-			int driftDurationToUse = driftDuration;
 
-            if (selectedMode == SignalMode::Randomized) {
-                randomizeAnomaly(randomGen, bufferSize, type, spikeStartToUse, spikeMagnitudeToUse,
-                    stuckStartToUse, stuckDurationToUse,
-                    driftRateToUse, driftStartToUse, driftDurationToUse);
-                anomalyStart = spikeStartToUse;
-                shouldFocusView = true;
-            }
+            randomizeAnomaly(randomGen, bufferSize, type, spikeStartToUse, spikeMagnitudeToUse,
+                stuckStartToUse, stuckDurationToUse,
+                driftRateToUse, driftStartToUse, driftDurationToUse);
+            anomalyStart = spikeStartToUse;
+            shouldFocusView = true;
 
             generateSignal(signal, isAnomaly, gen, noise, bufferSize, type,
                 spikeStartToUse, spikeMagnitudeToUse,
                 stuckStartToUse, stuckDurationToUse,
                 driftRateToUse, driftStartToUse, driftDurationToUse);
 
-            thresholdFlags.clear();
-            movingAvgFlags.clear();
-            zScoreFlags.clear();
-            rateFlags.clear();
-
-            for (int i = 0; i < signal.size(); i++) {
-                if (selectedDetector == DetectorMethod::Threshold) {
-                    bool tFlag = detector.checkThreshold(signal[i], thresholdMin, thresholdMax);
-                    thresholdFlags.push_back(tFlag);
-                }
-                if (selectedDetector == DetectorMethod::MovingAverage) {
-                    bool mFlag = detector.checkMovingAverage(signal, i, movingAvgWindow, movingAvgThreshold);
-                    movingAvgFlags.push_back(mFlag);
-                }
-                if (selectedDetector == DetectorMethod::ZScore) {
-                    bool zFlag = detector.checkZScore(signal, i, zScoreWindow, zScoreThreshold);
-                    zScoreFlags.push_back(zFlag);
-                }
-                if (selectedDetector == DetectorMethod::Rate) {
-                    bool spikeFlag = detector.checkRateSpike(signal, i, rateSpikeThreshold);
-					bool stuckFlag = detector.checkRateStuck(signal, i, rateStuckWindow, rateStuckThreshold);
-                    bool flagged = spikeFlag || stuckFlag;
-                    rateFlags.push_back(flagged);
-                }
-            }
-
             features = extractFeatures(signal, 50);
 
+            dbscanLabels.clear();
         }
 
         if (ImGui::Button("Export Features to CSV")) {
             std::ofstream file("features.csv");
             if (!file.is_open()) {
-                ImGui::Text("Failed to open file");
+                ImGui::Text("Failed to open file!");
             }
             else {
-                file << "index,rawValue,rollingAverage,rollingStdDev,rateOfChange,zScore,isAnomaly\n";
+                file << "index,rawValue,rollingMean,rollingStdDev,rateOfChange,zScore,isAnomaly\n";
                 for (int i = 0; i < (int)features.size(); i++) {
                     file << i << ","
                         << features[i].rawValue << ","
@@ -268,28 +137,36 @@ int main() {
                         << (isAnomaly[i] ? 1 : 0) << "\n";
                 }
                 file.close();
-				system("start features.csv");
+                system("start features.csv");
             }
         }
 
-        if(ImGui::Button("Run DBSCAN")) {
+        if (ImGui::Button("Run DBSCAN")) {
             dbscanLabels = runDBSCAN(features, dbscanEpsilon, dbscanMinPts);
         }
 
-        if (selectedMode == SignalMode::Randomized) {
-            if (type != AnomalyType::None) {
-                const char* anomalyName = "";
-                switch (type) {
-                case AnomalyType::Spike: anomalyName = "Spike"; break;
-                case AnomalyType::Stuck: anomalyName = "Stuck"; break;
-                case AnomalyType::Drift: anomalyName = "Drift"; break;
-                default: anomalyName = "None"; break;
-                }
-                ImGui::Text("Anomaly: %s at sample %d", anomalyName, anomalyStart);
+        if (!dbscanLabels.empty()) {
+            int maxCluster = -1;
+            int noiseCount = 0;
+            for (int label : dbscanLabels) {
+                if (label == -1) noiseCount++;
+                if (label > maxCluster) maxCluster = label;
             }
-            else {
-                ImGui::Text("Anomaly: None");
+            ImGui::Text("Clusters found: %d, Noise points: %d", maxCluster + 1, noiseCount);
+        }
+
+        if (type != AnomalyType::None) {
+            const char* anomalyName = "";
+            switch (type) {
+            case AnomalyType::Spike: anomalyName = "Spike"; break;
+            case AnomalyType::Stuck: anomalyName = "Stuck"; break;
+            case AnomalyType::Drift: anomalyName = "Drift"; break;
+            default: anomalyName = "None"; break;
             }
+            ImGui::Text("Anomaly: %s at sample %d", anomalyName, anomalyStart);
+        }
+        else {
+            ImGui::Text("Anomaly: None");
         }
 
         if (ImPlot::BeginPlot("Sine Wave", ImVec2(-1, 600))) {
@@ -299,71 +176,13 @@ int main() {
                 shouldFocusView = false;
             }
             else {
-                if (selectedMode != SignalMode::Randomized) {
-                    ImPlot::SetupAxisLimits(ImAxis_X1, 0, 1000, ImGuiCond_Once);
-                }
                 ImPlot::SetupAxis(ImAxis_Y1, nullptr, ImPlotAxisFlags_None);
             }
 
             ImPlot::PlotLine("signal", signal.data(), (int)signal.size());
 
-            if (selectedDetector == DetectorMethod::Threshold) {
-                std::vector<double> tFlagX, tFlagY;
-                for (int i = 0; i < (int)thresholdFlags.size(); i++) {
-                    if (thresholdFlags[i]) {
-                        tFlagX.push_back(i);
-                        tFlagY.push_back(signal[i]);
-                    }
-                }
-                if (!tFlagX.empty()) {
-                    ImPlot::PlotScatter("Threshold Detected", tFlagX.data(), tFlagY.data(), (int)tFlagX.size());
-                }
-            }
-            if (selectedDetector == DetectorMethod::MovingAverage) {
-                std::vector<double> mFlagX, mFlagY;
-                for (int i = 0; i < (int)movingAvgFlags.size(); i++) {
-                    if (movingAvgFlags[i]) {
-                        mFlagX.push_back(i);
-                        mFlagY.push_back(signal[i]);
-                    }
-                }
-                if (!mFlagX.empty()) {
-                    ImPlot::PlotScatter("Moving Avg Detected", mFlagX.data(), mFlagY.data(), (int)mFlagX.size());
-                }
-            }
-			if (selectedDetector == DetectorMethod::ZScore) {
-				std::vector<double> zFlagX, zFlagY;
-				for (int i = 0; i < (int)zScoreFlags.size(); i++) {
-					if (zScoreFlags[i]) {
-						zFlagX.push_back(i);
-						zFlagY.push_back(signal[i]);
-					}
-				}
-				if (!zFlagX.empty()) {
-					ImPlot::PlotScatter("Z-Score Detected", zFlagX.data(), zFlagY.data(), (int)zFlagX.size());
-				}
-			}
-
-            if (selectedDetector == DetectorMethod::Rate) {
-				std::vector<double> rFlagX, rFlagY;
-				for (int i = 0; i < (int)rateFlags.size(); i++) {
-					if (rateFlags[i]) {
-						rFlagX.push_back(i);
-						rFlagY.push_back(signal[i]);
-					}
-				}
-				if (!rFlagX.empty()) {
-					ImPlot::PlotScatter("Rate Detected", rFlagX.data(), rFlagY.data(), (int)rFlagX.size());
-				}
-			}
-
-            if (type != AnomalyType::None) {
-                double markerX = (double)anomalyStart;
-                ImPlot::PlotInfLines("Anomaly Start", &markerX, 1);
-            }
-
             if (!dbscanLabels.empty()) {
-				std::vector<double> noiseX, noiseY;
+                std::vector<double> noiseX, noiseY;
                 for (int i = 0; i < (int)dbscanLabels.size(); i++) {
                     if (dbscanLabels[i] == -1) {
                         noiseX.push_back(i);
@@ -371,8 +190,13 @@ int main() {
                     }
                 }
                 if (!noiseX.empty()) {
-                    ImPlot::PlotScatter("DBSCAN Noise", noiseX.data(), noiseY.data(), (int)noiseX.size());
+                    ImPlot::PlotScatter("DBSCAN Noise (Anomaly Candidates)", noiseX.data(), noiseY.data(), (int)noiseX.size());
                 }
+            }
+
+            if (type != AnomalyType::None) {
+                double markerX = (double)anomalyStart;
+                ImPlot::PlotInfLines("Anomaly Start", &markerX, 1);
             }
 
             ImPlot::EndPlot();

@@ -4,11 +4,6 @@
 #include "SineGenerator.h"
 #include "NoiseInjector.h"
 
-enum class SignalMode {
-    Manual,
-    Randomized
-};
-
 enum class AnomalyType {
     None,
     Spike,
@@ -26,3 +21,5 @@ void randomizeAnomaly(std::mt19937& randomGen, int bufferSize, AnomalyType& sele
     int& spikeStart, float& spikeMagnitude,
     int& stuckStart, int& stuckDuration,
     float& driftRate, int& driftStart, int& driftDuration);
+
+void randomizeWave(std::mt19937& randomGen, float& frequency, float& amplitude, float& phase, float& noiseStdDev);
