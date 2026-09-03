@@ -108,10 +108,11 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions);DLIB_NO_GUI_SUPPORT</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>imgui;imgui\backends;implot;glfw\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>imgui;imgui\backends;implot;glfw\include;%(AdditionalIncludeDirectories);dlib;dlib</AdditionalIncludeDirectories>
+      <AdditionalOptions>/bigobj %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -130,9 +131,11 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions);DLIB_NO_GUI_SUPPORT</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalIncludeDirectories>;dlib;dlib</AdditionalIncludeDirectories>
+      <AdditionalOptions>/bigobj %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -144,6 +147,10 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="DBSCAN.cpp" />
+    <ClCompile Include="dlib\dlib\all\source.cpp">
+      <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Release|x64'">/bigobj %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">/bigobj %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
     <ClCompile Include="FaultDetector.cpp" />
     <ClCompile Include="FeatureExtractor.cpp" />
     <ClCompile Include="imgui\backends\imgui_impl_glfw.cpp" />
@@ -158,6 +165,7 @@
     <ClCompile Include="main.cpp" />
     <ClCompile Include="NoiseInjector.cpp" />
     <ClCompile Include="Normalizer.cpp" />
+    <ClCompile Include="OCSVM.cpp" />
     <ClCompile Include="SignalPipeline.cpp" />
     <ClCompile Include="SineGenerator.cpp" />
   </ItemGroup>
@@ -167,6 +175,7 @@
     <ClInclude Include="FeatureExtractor.h" />
     <ClInclude Include="NoiseInjector.h" />
     <ClInclude Include="Normalizer.h" />
+    <ClInclude Include="OCSVM.h" />
     <ClInclude Include="SignalPipeline.h" />
     <ClInclude Include="SineGenerator.h" />
   </ItemGroup>

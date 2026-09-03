@@ -13,6 +13,7 @@
 #include <random>
 #include <fstream>
 #include <cstdlib>
+#include <dlib/svm.h>
 
 int anomalyStart = 0;
 AnomalyType type = AnomalyType::None;
