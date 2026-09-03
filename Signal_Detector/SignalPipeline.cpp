@@ -3,7 +3,7 @@
 #include "SignalPipeline.h"
 #include <cmath>
 
-void generateSignal(std::vector<float>& signal, std::vector<bool>& isAnomaly, SineGenerator& gen, NoiseInjector& noise,
+void generateSignal(std::vector<float>& signal, std::vector<float>& cleanSignal, std::vector<bool>& isAnomaly, SineGenerator& gen, NoiseInjector& noise,
     int bufferSize, AnomalyType selectedAnomaly,
     int spikeStart, float spikeMagnitude,
     int stuckStart, int stuckDuration,
@@ -11,10 +11,14 @@ void generateSignal(std::vector<float>& signal, std::vector<bool>& isAnomaly, Si
 
     gen.reset();
     signal.clear();
+    cleanSignal.clear();
+    isAnomaly.clear();
     float stuckValue = 0.0f;
 
     for (int i = 0; i < bufferSize; i++) {
         float clean = gen.getNextSample();
+        cleanSignal.push_back(clean);
+
         float noisy = noise.apply(clean);
 
         bool spikeThisSample = (selectedAnomaly == AnomalyType::Spike) && (i == spikeStart);
@@ -30,10 +34,10 @@ void generateSignal(std::vector<float>& signal, std::vector<bool>& isAnomaly, Si
         int samplesSinceDriftStart = isDrifting ? (i - driftStart) : 0;
         noisy = noise.applyDrift(noisy, isDrifting, driftRate, samplesSinceDriftStart);
 
-        bool anomalousSample = (spikeThisSample || isStuck || isDrifting);
-        
-        isAnomaly.push_back(anomalousSample);
+        bool anomalousSample = spikeThisSample || isStuck || isDrifting;
+
         signal.push_back(noisy);
+        isAnomaly.push_back(anomalousSample);
     }
 }
 

@@ -3,7 +3,7 @@
 
 float distanceSquared(const NormalizedFeatureVector& a, const NormalizedFeatureVector& b) {
 	float sum = 0.0f;
-	for (int i = 0; i < 5; i++) {
+	for (int i = 0; i < 6; i++) {
 		float diff = a.values[i] - b.values[i];
 		sum += diff * diff;
 	}
@@ -22,9 +22,9 @@ std::vector<int> findNeighbors(const std::vector<NormalizedFeatureVector>& point
 	return neighbors;
 }
 
-std::vector<int> runDBSCAN(const std::vector<FeatureVector>& features, float epsilon, int minPts) {
+std::vector<int> runDBSCAN(const std::vector<FeatureVector>& features, float epsilon, int minPts, float residualWeight) {
     Normalizer normalizer;
-    std::vector<NormalizedFeatureVector> points = normalizer.normalize(features);
+    std::vector<NormalizedFeatureVector> points = normalizer.normalize(features, residualWeight);
 
     int n = (int)points.size();
     std::vector<int> labels(n, -1);

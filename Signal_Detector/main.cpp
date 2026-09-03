@@ -7,6 +7,7 @@
 #include "SignalPipeline.h"
 #include "FeatureExtractor.h"
 #include "DBSCAN.h"
+#include "OCSVM.h"
 
 #include <GLFW/glfw3.h>
 #include <vector>
@@ -47,6 +48,7 @@ int main() {
     NoiseInjector noise(0.1f);
     std::vector<float> signal;
     std::vector<bool> isAnomaly;
+	std::vector<float> cleanSignal;
     std::vector<FeatureVector> features;
 
     std::random_device rd;
@@ -56,8 +58,13 @@ int main() {
     int dbscanMinPts = 5;
     std::vector<int> dbscanLabels;
 
+    float ocsvmNu = 0.0001f;
+    float ocsvmGamma = 0.1f;
+    float ocsvmThreshold = -0.5f;
+    std::vector<double> ocsvmScores;
+
     const float sampleRate = 100.0f;
-    const float durationSeconds = 300.0f;
+    const float durationSeconds = 100.0f;
     const int bufferSize = (int)(sampleRate * durationSeconds);
 
     int spikeStart = bufferSize / 2;
@@ -69,6 +76,8 @@ int main() {
     float driftRate = 0.01f;
     int driftStart = bufferSize / 2;
     int driftDuration = 500;
+
+    float residualWeight = 2.0f;
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
@@ -85,6 +94,12 @@ int main() {
 
         ImGui::SliderFloat("DBSCAN Epsilon", &dbscanEpsilon, 0.1f, 5.0f);
         ImGui::SliderInt("DBSCAN MinPts", &dbscanMinPts, 2, 20);
+
+        ImGui::SliderFloat("OCSVM Nu", &ocsvmNu, 0.0001f, 0.5f);
+        ImGui::SliderFloat("OCSVM Gamma", &ocsvmGamma, 0.1f, 10.0f);
+        ImGui::SliderFloat("OCSVM Threshold", &ocsvmThreshold, -5.0f, 5.0f);
+
+        ImGui::SliderFloat("Residual Weight", &residualWeight, 1.0f, 10.0f);
 
         ImGui::Separator();
 
@@ -111,14 +126,15 @@ int main() {
             anomalyStart = spikeStartToUse;
             shouldFocusView = true;
 
-            generateSignal(signal, isAnomaly, gen, noise, bufferSize, type,
+            generateSignal(signal, cleanSignal, isAnomaly, gen, noise, bufferSize, type,
                 spikeStartToUse, spikeMagnitudeToUse,
                 stuckStartToUse, stuckDurationToUse,
                 driftRateToUse, driftStartToUse, driftDurationToUse);
 
-            features = extractFeatures(signal, 50);
+            features = extractFeatures(signal, cleanSignal, 50);
 
             dbscanLabels.clear();
+            ocsvmScores.clear();
         }
 
         if (ImGui::Button("Export Features to CSV")) {
@@ -127,7 +143,7 @@ int main() {
                 ImGui::Text("Failed to open file!");
             }
             else {
-                file << "index,rawValue,rollingMean,rollingStdDev,rateOfChange,zScore,isAnomaly\n";
+                file << "index,rawValue,rollingMean,rollingStdDev,rateOfChange,zScore,residual,isAnomaly\n";
                 for (int i = 0; i < (int)features.size(); i++) {
                     file << i << ","
                         << features[i].rawValue << ","
@@ -135,6 +151,7 @@ int main() {
                         << features[i].rollingStdDev << ","
                         << features[i].rateOfChange << ","
                         << features[i].zScore << ","
+                        << features[i].residual << ","
                         << (isAnomaly[i] ? 1 : 0) << "\n";
                 }
                 file.close();
@@ -143,7 +160,11 @@ int main() {
         }
 
         if (ImGui::Button("Run DBSCAN")) {
-            dbscanLabels = runDBSCAN(features, dbscanEpsilon, dbscanMinPts);
+            dbscanLabels = runDBSCAN(features, dbscanEpsilon, dbscanMinPts, residualWeight);
+        }
+
+        if (ImGui::Button("Run OCSVM")) {
+            ocsvmScores = runOCSVMPerCluster(features, dbscanLabels, ocsvmNu, ocsvmGamma, residualWeight);
         }
 
         if (!dbscanLabels.empty()) {
@@ -170,6 +191,14 @@ int main() {
             ImGui::Text("Anomaly: None");
         }
 
+        if (!ocsvmScores.empty()) {
+            int anomalyCount = 0;
+            for (double score : ocsvmScores) {
+                if (score < ocsvmThreshold) anomalyCount++;
+            }
+            ImGui::Text("OCSVM Anomalies (score < threshold) : %d", anomalyCount);
+        }
+
         if (ImPlot::BeginPlot("Sine Wave", ImVec2(-1, 600))) {
             if (shouldFocusView) {
                 ImPlot::SetupAxisLimits(ImAxis_X1, anomalyStart - 200, anomalyStart + 200, ImGuiCond_Always);
@@ -192,6 +221,19 @@ int main() {
                 }
                 if (!noiseX.empty()) {
                     ImPlot::PlotScatter("DBSCAN Noise (Anomaly Candidates)", noiseX.data(), noiseY.data(), (int)noiseX.size());
+                }
+            }
+
+            if (!ocsvmScores.empty()) {
+                std::vector<double> ocX, ocY;
+                for (int i = 0; i < (int)ocsvmScores.size(); i++) {
+                    if (ocsvmScores[i] < ocsvmThreshold) {
+                        ocX.push_back(i);
+                        ocY.push_back(signal[i]);
+                    }
+                }
+                if (!ocX.empty()) {
+                    ImPlot::PlotScatter("OCSVM Anomalies", ocX.data(), ocY.data(), (int)ocX.size());
                 }
             }
 

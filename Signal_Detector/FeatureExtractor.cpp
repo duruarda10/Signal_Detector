@@ -1,12 +1,13 @@
 #include "FeatureExtractor.h"
 #include <cmath>
 
-std::vector<FeatureVector> extractFeatures(const std::vector<float>& signal, int windowSize) {
+std::vector<FeatureVector> extractFeatures(const std::vector<float>& signal, const std::vector<float>& cleanSignal, int windowSize) {
 	std::vector<FeatureVector> features;
 
 	for (int i = 0; i < (int)signal.size(); i++) {
 		FeatureVector f;
 		f.rawValue = signal[i];
+		f.residual = signal[i] - cleanSignal[i];
 
 		if (i < windowSize) {
 			f.rollingAverage = signal[i];

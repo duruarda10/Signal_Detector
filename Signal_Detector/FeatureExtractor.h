@@ -7,6 +7,7 @@ struct FeatureVector {
 	float rollingStdDev;
 	float rateOfChange;
 	float zScore;
+	float residual;
 };
 
-std::vector<FeatureVector> extractFeatures(const std::vector<float>& signal, int windowSize);
+std::vector<FeatureVector> extractFeatures(const std::vector<float>& signal, const std::vector<float>& cleanSignal, int windowSize);
