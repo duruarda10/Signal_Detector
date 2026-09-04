@@ -5,7 +5,7 @@
 
 void generateSignal(std::vector<float>& signal, std::vector<float>& cleanSignal, std::vector<bool>& isAnomaly, SineGenerator& gen, NoiseInjector& noise,
     int bufferSize, AnomalyType selectedAnomaly,
-    int spikeStart, float spikeMagnitude,
+	int spikeStart, float spikeMagnitude, int spikeDuration,
     int stuckStart, int stuckDuration,
     float driftRate, int driftStart, int driftDuration) {
 
@@ -21,9 +21,6 @@ void generateSignal(std::vector<float>& signal, std::vector<float>& cleanSignal,
 
         float noisy = noise.apply(clean);
 
-        bool spikeThisSample = (selectedAnomaly == AnomalyType::Spike) && (i == spikeStart);
-        noisy = noise.applySpike(noisy, spikeThisSample, spikeMagnitude);
-
         bool isStuck = (selectedAnomaly == AnomalyType::Stuck) && (i >= stuckStart) && (i < stuckStart + stuckDuration);
         if (isStuck && i == stuckStart) {
             stuckValue = noisy;
@@ -34,15 +31,23 @@ void generateSignal(std::vector<float>& signal, std::vector<float>& cleanSignal,
         int samplesSinceDriftStart = isDrifting ? (i - driftStart) : 0;
         noisy = noise.applyDrift(noisy, isDrifting, driftRate, samplesSinceDriftStart);
 
-        bool anomalousSample = spikeThisSample || isStuck || isDrifting;
-
         signal.push_back(noisy);
-        isAnomaly.push_back(anomalousSample);
+    }
+
+    if (selectedAnomaly == AnomalyType::Spike) {
+        noise.applySpike(signal, spikeStart, spikeMagnitude, spikeDuration);
+    }
+
+    for (int i = 0; i < bufferSize; i++) {
+        bool isSpiking = (selectedAnomaly == AnomalyType::Spike) && (i >= spikeStart) && (i < spikeStart + spikeDuration);
+        bool isStuck = (selectedAnomaly == AnomalyType::Stuck) && (i >= stuckStart) && (i < stuckStart + stuckDuration);
+        bool isDrifting = (selectedAnomaly == AnomalyType::Drift) && (i >= driftStart) && (i < driftStart + driftDuration);
+        isAnomaly.push_back(isSpiking || isStuck || isDrifting);
     }
 }
 
 void randomizeAnomaly(std::mt19937& randomGen, int bufferSize, AnomalyType& selectedAnomaly,
-    int& spikeStart, float& spikeMagnitude,
+    int& spikeStart, float& spikeMagnitude, int& spikeDuration,
     int& stuckStart, int& stuckDuration,
     float& driftRate, int& driftStart, int& driftDuration) {
 
@@ -59,26 +64,29 @@ void randomizeAnomaly(std::mt19937& randomGen, int bufferSize, AnomalyType& sele
     std::uniform_real_distribution<float> anomalyMagnitude(0.5f, 10.0f);
     spikeMagnitude = anomalyMagnitude(randomGen);
 
+    std::uniform_int_distribution<int> spikeDurationDist(5, 50);
+    spikeDuration = spikeDurationDist(randomGen);
+
     std::uniform_int_distribution<int> anomalyDuration(50, 2000);
     stuckDuration = anomalyDuration(randomGen);
 
     std::uniform_real_distribution<float> anomalyRate(0.0001f, 0.002f);
     driftRate = anomalyRate(randomGen);
 
-	std::uniform_int_distribution<int> driftDurationDist(100, 1000);
-	driftDuration = driftDurationDist(randomGen);
+    std::uniform_int_distribution<int> driftDurationDist(100, 1000);
+    driftDuration = driftDurationDist(randomGen);
 }
 
 void randomizeWave(std::mt19937& randomGen, float& frequency, float& amplitude, float& phase, float& noiseStdDev) {
-	std::uniform_real_distribution<float> freqDist(0.5f, 5.0f);
-	frequency = freqDist(randomGen);
+    std::uniform_real_distribution<float> freqDist(0.5f, 5.0f);
+    frequency = freqDist(randomGen);
 
-	std::uniform_real_distribution<float> ampDist(0.5f, 3.0f);
-	amplitude = ampDist(randomGen);
+    std::uniform_real_distribution<float> ampDist(0.5f, 3.0f);
+    amplitude = ampDist(randomGen);
 
-	std::uniform_real_distribution<float> phaseDist(0.0f, 2.0f * M_PI);
-	phase = phaseDist(randomGen);
+    std::uniform_real_distribution<float> phaseDist(0.0f, 2.0f * M_PI);
+    phase = phaseDist(randomGen);
 
-	std::uniform_real_distribution<float> noiseDist(0.02f, 1.0f);
-	noiseStdDev = noiseDist(randomGen);
+    std::uniform_real_distribution<float> noiseDist(0.02f, 1.0f);
+    noiseStdDev = noiseDist(randomGen);
 }

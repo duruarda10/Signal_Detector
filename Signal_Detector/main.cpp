@@ -15,6 +15,9 @@
 #include <fstream>
 #include <cstdlib>
 #include <dlib/svm.h>
+#include <cmath>
+#include <limits>
+#include <algorithm>
 
 int anomalyStart = 0;
 AnomalyType type = AnomalyType::None;
@@ -48,27 +51,28 @@ int main() {
     NoiseInjector noise(0.1f);
     std::vector<float> signal;
     std::vector<bool> isAnomaly;
-	std::vector<float> cleanSignal;
+    std::vector<float> cleanSignal;
     std::vector<FeatureVector> features;
 
     std::random_device rd;
     std::mt19937 randomGen(rd());
 
-    float dbscanEpsilon = 0.7f;
-    int dbscanMinPts = 5;
+    float dbscanEpsilon = 1.5f;
+    int dbscanMinPts = 7;
     std::vector<int> dbscanLabels;
 
-    float ocsvmNu = 0.0001f;
+    float ocsvmNu = 0.02f;
     float ocsvmGamma = 0.1f;
     float ocsvmThreshold = -0.5f;
     std::vector<double> ocsvmScores;
 
     const float sampleRate = 100.0f;
-    const float durationSeconds = 100.0f;
+    const float durationSeconds = 300.0f;
     const int bufferSize = (int)(sampleRate * durationSeconds);
 
     int spikeStart = bufferSize / 2;
     float spikeMagnitude = 3.0f;
+    int spikeDuration = 10;
 
     int stuckStart = bufferSize / 2;
     int stuckDuration = 50;
@@ -77,7 +81,7 @@ int main() {
     int driftStart = bufferSize / 2;
     int driftDuration = 500;
 
-    float residualWeight = 2.0f;
+    float residualWeight = 1.0f;
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
@@ -95,7 +99,7 @@ int main() {
         ImGui::SliderFloat("DBSCAN Epsilon", &dbscanEpsilon, 0.1f, 5.0f);
         ImGui::SliderInt("DBSCAN MinPts", &dbscanMinPts, 2, 20);
 
-        ImGui::SliderFloat("OCSVM Nu", &ocsvmNu, 0.0001f, 0.5f);
+        ImGui::SliderFloat("OCSVM Nu", &ocsvmNu, 0.001f, 0.5f);
         ImGui::SliderFloat("OCSVM Gamma", &ocsvmGamma, 0.1f, 10.0f);
         ImGui::SliderFloat("OCSVM Threshold", &ocsvmThreshold, -5.0f, 5.0f);
 
@@ -112,7 +116,11 @@ int main() {
             gen.setPhase(phaseToUse);
             noise.setStdDev(noiseToUse);
 
+            const int windowSize = 50;
+            const int extendedSize = bufferSize + windowSize;
+
             int spikeStartToUse = spikeStart;
+            int spikeDurationToUse = spikeDuration;
             int stuckStartToUse = stuckStart;
             int stuckDurationToUse = stuckDuration;
             int driftStartToUse = driftStart;
@@ -120,18 +128,28 @@ int main() {
             float spikeMagnitudeToUse = spikeMagnitude;
             float driftRateToUse = driftRate;
 
-            randomizeAnomaly(randomGen, bufferSize, type, spikeStartToUse, spikeMagnitudeToUse,
+            randomizeAnomaly(randomGen, extendedSize, type, spikeStartToUse, spikeMagnitudeToUse, spikeDurationToUse,
                 stuckStartToUse, stuckDurationToUse,
                 driftRateToUse, driftStartToUse, driftDurationToUse);
-            anomalyStart = spikeStartToUse;
-            shouldFocusView = true;
 
-            generateSignal(signal, cleanSignal, isAnomaly, gen, noise, bufferSize, type,
-                spikeStartToUse, spikeMagnitudeToUse,
+            generateSignal(signal, cleanSignal, isAnomaly, gen, noise, extendedSize, type,
+                spikeStartToUse, spikeMagnitudeToUse, spikeDurationToUse,
                 stuckStartToUse, stuckDurationToUse,
                 driftRateToUse, driftStartToUse, driftDurationToUse);
 
             features = extractFeatures(signal, cleanSignal, 50);
+
+            signal.erase(signal.begin(), signal.begin() + windowSize);
+            cleanSignal.erase(cleanSignal.begin(), cleanSignal.begin() + windowSize);
+            isAnomaly.erase(isAnomaly.begin(), isAnomaly.begin() + windowSize);
+            features.erase(features.begin(), features.begin() + windowSize);
+
+            int rawStart = spikeStartToUse;
+            if (type == AnomalyType::Stuck) rawStart = stuckStartToUse;
+            if (type == AnomalyType::Drift) rawStart = driftStartToUse;
+
+            anomalyStart = std::max(0, rawStart - windowSize);
+            shouldFocusView = true;
 
             dbscanLabels.clear();
             ocsvmScores.clear();
@@ -143,7 +161,7 @@ int main() {
                 ImGui::Text("Failed to open file!");
             }
             else {
-                file << "index,rawValue,rollingMean,rollingStdDev,rateOfChange,zScore,residual,isAnomaly\n";
+                file << "index,rawValue,rollingMean,rollingStdDev,rateOfChange,zScore,residual,firstDifference,isAnomaly\n";
                 for (int i = 0; i < (int)features.size(); i++) {
                     file << i << ","
                         << features[i].rawValue << ","
@@ -152,6 +170,7 @@ int main() {
                         << features[i].rateOfChange << ","
                         << features[i].zScore << ","
                         << features[i].residual << ","
+                        << features[i].firstDifference << ","
                         << (isAnomaly[i] ? 1 : 0) << "\n";
                 }
                 file.close();
@@ -192,16 +211,20 @@ int main() {
         }
 
         if (!ocsvmScores.empty()) {
-            int anomalyCount = 0;
-            for (double score : ocsvmScores) {
-                if (score < ocsvmThreshold) anomalyCount++;
+            int genuineOcsvmFlags = 0;
+            for (int i = 0; i < (int)ocsvmScores.size(); i++) {
+                if (!std::isnan(ocsvmScores[i]) && ocsvmScores[i] < ocsvmThreshold) {
+                    genuineOcsvmFlags++;
+                }
             }
-            ImGui::Text("OCSVM Anomalies (score < threshold) : %d", anomalyCount);
+            ImGui::Text("Genuine OCSVM anomalies (within clusters): %d", genuineOcsvmFlags);
         }
 
         if (ImPlot::BeginPlot("Sine Wave", ImVec2(-1, 600))) {
             if (shouldFocusView) {
-                ImPlot::SetupAxisLimits(ImAxis_X1, anomalyStart - 200, anomalyStart + 200, ImGuiCond_Always);
+                double minX = std::max(0.0, (double)anomalyStart - 200.0);
+                double maxX = (double)anomalyStart + 200.0;
+                ImPlot::SetupAxisLimits(ImAxis_X1, minX, maxX, ImGuiCond_Always);
                 ImPlot::SetupAxis(ImAxis_Y1, nullptr, ImPlotAxisFlags_AutoFit);
                 shouldFocusView = false;
             }
@@ -209,14 +232,16 @@ int main() {
                 ImPlot::SetupAxis(ImAxis_Y1, nullptr, ImPlotAxisFlags_None);
             }
 
-            ImPlot::PlotLine("signal", signal.data(), (int)signal.size());
+            if (!signal.empty()) {
+                ImPlot::PlotLine("signal", signal.data(), (int)signal.size());
+            }
 
-            if (!dbscanLabels.empty()) {
+            if (!dbscanLabels.empty() && dbscanLabels.size() == signal.size()) {
                 std::vector<double> noiseX, noiseY;
                 for (int i = 0; i < (int)dbscanLabels.size(); i++) {
                     if (dbscanLabels[i] == -1) {
-                        noiseX.push_back(i);
-                        noiseY.push_back(signal[i]);
+                        noiseX.push_back((double)i);
+                        noiseY.push_back((double)signal[i]);
                     }
                 }
                 if (!noiseX.empty()) {
@@ -224,12 +249,12 @@ int main() {
                 }
             }
 
-            if (!ocsvmScores.empty()) {
+            if (!ocsvmScores.empty() && ocsvmScores.size() == signal.size()) {
                 std::vector<double> ocX, ocY;
                 for (int i = 0; i < (int)ocsvmScores.size(); i++) {
-                    if (ocsvmScores[i] < ocsvmThreshold) {
-                        ocX.push_back(i);
-                        ocY.push_back(signal[i]);
+                    if (!std::isnan(ocsvmScores[i]) && ocsvmScores[i] < ocsvmThreshold) {
+                        ocX.push_back((double)i);
+                        ocY.push_back((double)signal[i]);
                     }
                 }
                 if (!ocX.empty()) {
@@ -237,8 +262,24 @@ int main() {
                 }
             }
 
+            if (!ocsvmScores.empty() && ocsvmScores.size() == signal.size() &&
+                !dbscanLabels.empty() && dbscanLabels.size() == signal.size()) {
+
+                std::vector<double> ocOnlyX, ocOnlyY;
+                for (int i = 0; i < (int)ocsvmScores.size(); i++) {
+                    bool wasDbscanNoise = (dbscanLabels[i] == -1);
+                    if (!std::isnan(ocsvmScores[i])) {
+                        bool ocsvmFlagged = (ocsvmScores[i] < ocsvmThreshold);
+                        if (ocsvmFlagged && !wasDbscanNoise) {
+                            ocOnlyX.push_back((double)i);
+                            ocOnlyY.push_back((double)signal[i]);
+                        }
+                    }
+                }
+            }
+
             if (type != AnomalyType::None) {
-                double markerX = (double)anomalyStart;
+                double markerX = (double)std::max(0, anomalyStart);
                 ImPlot::PlotInfLines("Anomaly Start", &markerX, 1);
             }
 

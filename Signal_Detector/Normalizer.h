@@ -3,7 +3,7 @@
 #include "FeatureExtractor.h"
 
 struct NormalizedFeatureVector {
-    float values[6];
+    float values[7];
 };
 
 class Normalizer {

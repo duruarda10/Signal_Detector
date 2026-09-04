@@ -3,8 +3,10 @@
 
 #include <dlib/svm.h>
 #include <map>
+#include <limits>
+#include <algorithm>
 
-typedef dlib::matrix<double, 6, 1> sample_type;
+typedef dlib::matrix<double, 7, 1> sample_type;
 typedef dlib::radial_basis_kernel<sample_type> kernel_type;
 
 std::vector<double> runOCSVMPerCluster(const std::vector<FeatureVector>& features, const std::vector<int>& clusterLabels, double nu, double gamma, float residualWeight) {
@@ -15,12 +17,12 @@ std::vector<double> runOCSVMPerCluster(const std::vector<FeatureVector>& feature
 	std::vector<sample_type> samples(n);
 	for (int i = 0; i < n; i++) {
 		sample_type m;
-		for (int j = 0; j < 6; j++) {
+		for (int j = 0; j < 7; j++) {
 			m(j) = normalized[i].values[j];
 		}
 		samples[i] = m;
 	}
-	std::vector<double> scores(n, -999.0);
+	std::vector<double> scores(n, std::numeric_limits<double>::quiet_NaN());
 
 	std::map<int, std::vector<int>> clusterToIndices;
 	for (int i = 0; i < n; i++) {
@@ -31,17 +33,20 @@ std::vector<double> runOCSVMPerCluster(const std::vector<FeatureVector>& feature
 
 	for (auto& entry : clusterToIndices) {
 		std::vector<int>& indices = entry.second;
-
-		if ((int)indices.size() < 6) {
-			for (int idx : indices) scores[idx] = -999.0;
+		
+		if ((int)indices.size() < 5) {
 			continue;
 		}
 
 		std::vector<sample_type> clusterSamples;
 		for (int idx : indices) clusterSamples.push_back(samples[idx]);
-	
+
+		int clusterSize = static_cast<int>(indices.size());
+		double minNu = 2.0 / clusterSize;
+		double effectiveNu = std::clamp(nu, minNu, 0.99);
+
 		dlib::svm_one_class_trainer<kernel_type> trainer;
-		trainer.set_nu(nu);
+		trainer.set_nu(effectiveNu);
 		trainer.set_kernel(kernel_type(gamma));
 
 		dlib::decision_function<kernel_type> df = trainer.train(clusterSamples);

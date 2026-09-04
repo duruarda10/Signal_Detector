@@ -7,7 +7,7 @@ public:
 	float apply(float cleanValue);
 	void setStdDev(float stdDev);
 
-	float applySpike(float value, bool triggerSpike, float spikeMagnitude);
+	void applySpike(std::vector<float>& signal, int start, float magnitude, int duration);
 	float applyStuck(float value, bool triggerStuck, float stuckValue);
 	float applyDrift(float value, bool triggerDrift, float driftRate, int samplesSinceStart);
 

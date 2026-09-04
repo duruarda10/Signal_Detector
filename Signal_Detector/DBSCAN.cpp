@@ -3,7 +3,7 @@
 
 float distanceSquared(const NormalizedFeatureVector& a, const NormalizedFeatureVector& b) {
 	float sum = 0.0f;
-	for (int i = 0; i < 6; i++) {
+	for (int i = 0; i < 7; i++) {
 		float diff = a.values[i] - b.values[i];
 		sum += diff * diff;
 	}
