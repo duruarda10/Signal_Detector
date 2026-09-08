@@ -55,6 +55,9 @@ int main() {
     std::vector<float> cleanSignal;
     std::vector<FeatureVector> features;
 
+    int selectedAnomalyOption = 0;
+    const char* anomalyOptions[] = { "Random", "Spike", "Stuck", "Drift" };
+
     std::random_device rd;
     std::mt19937 randomGen(rd());
 
@@ -231,6 +234,7 @@ int main() {
             }
         }
 
+        ImGui::Combo("Anomaly Type", &selectedAnomalyOption, anomalyOptions, IM_ARRAYSIZE(anomalyOptions));
         
         if (ImGui::Button("Generate Signal")) {
             float freqToUse, ampToUse, phaseToUse, noiseToUse;
@@ -257,12 +261,16 @@ int main() {
                 stuckStartToUse, stuckDurationToUse,
                 driftRateToUse, driftStartToUse, driftDurationToUse);
 
+            if (selectedAnomalyOption == 1) type = AnomalyType::Spike;
+            else if (selectedAnomalyOption == 2) type = AnomalyType::Stuck;
+            else if (selectedAnomalyOption == 3) type = AnomalyType::Drift;
+
             generateSignal(signal, cleanSignal, isAnomaly, gen, noise, extendedSize, type,
                 spikeStartToUse, spikeMagnitudeToUse, spikeDurationToUse,
                 stuckStartToUse, stuckDurationToUse,
                 driftRateToUse, driftStartToUse, driftDurationToUse);
 
-            features = extractFeatures(signal, cleanSignal, 50);
+            features = extractFeatures(signal, cleanSignal, windowSize);
 
             signal.erase(signal.begin(), signal.begin() + windowSize);
             cleanSignal.erase(cleanSignal.begin(), cleanSignal.begin() + windowSize);
