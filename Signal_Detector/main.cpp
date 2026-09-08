@@ -113,10 +113,10 @@ int main() {
 
         static std::string trainStatus;
 
-        if (ImGui::Button("Train OCSVM Model (10 signals)")) {
+        if (ImGui::Button("Train OCSVM Model")) {
             try {
                 std::vector<FeatureVector> trainingFeatures;
-                const int trainingSignals = 10;
+                const int trainingSignals = 50;
                 const int windowSize = 50;
                 const int extendedSize = bufferSize + windowSize;
 
@@ -143,27 +143,21 @@ int main() {
                     trainingFeatures.insert(trainingFeatures.end(), feat.begin(), feat.end());
                 }
 
-                trainStatus = "Collected " + std::to_string(trainingFeatures.size()) + " training samples";
+                const size_t maxTrainingSamples = 3000;
+                if (trainingFeatures.size() > maxTrainingSamples) {
+                    std::shuffle(trainingFeatures.begin(), trainingFeatures.end(), randomGen);
+                    trainingFeatures.resize(maxTrainingSamples);
+                }
 
                 if (trainingFeatures.empty()) {
-                    trainStatus += " — ABORTING, no data to train on";
+                    trainStatus = "Training failed: no data collected";
                 }
                 else {
-                    trainStatus = "Collected " + std::to_string(trainingFeatures.size()) + " training samples";
-
-                    const size_t maxTrainingSamples = 3000;
-                    if (trainingFeatures.size() > maxTrainingSamples) {
-                        std::shuffle(trainingFeatures.begin(), trainingFeatures.end(), randomGen);
-                        trainingFeatures.resize(maxTrainingSamples);
-                        trainStatus += " (subsampled to " + std::to_string(maxTrainingSamples) + ")";
-                    }
-
-
                     ocsvmStats = Normalizer::fit(trainingFeatures);
                     ocsvmModel = trainGlobalOCSVM(trainingFeatures, ocsvmStats, ocsvmNu, ocsvmGamma, residualWeight);
                     saveOCSVMModel("ocsvm_model.dat", ocsvmModel, ocsvmStats);
                     modelLoaded = true;
-                    trainStatus += " — training succeeded";
+                    trainStatus = "Training completed: " + std::to_string(trainingSignals) + " signals";
                 }
             }
             catch (std::exception& e) {
@@ -221,31 +215,6 @@ int main() {
 
             dbscanLabels.clear();
             ocsvmScores.clear();
-        }
-
-        if (ImGui::Button("Export Features to CSV")) {
-            std::ofstream file("features.csv");
-            if (!file.is_open()) {
-                ImGui::Text("Failed to open file!");
-            }
-            else {
-                file << "index,rawValue,rollingMean,rollingStdDev,rateOfChange,zScore,residual,firstDifference,ocsvmScore,isAnomaly\n";
-                for (int i = 0; i < (int)features.size(); i++) {
-                    double score = (i < (int)ocsvmScores.size()) ? ocsvmScores[i] : std::numeric_limits<double>::quiet_NaN();
-                    file << i << ","
-                        << features[i].rawValue << ","
-                        << features[i].rollingAverage << ","
-                        << features[i].rollingStdDev << ","
-                        << features[i].rateOfChange << ","
-                        << features[i].zScore << ","
-                        << features[i].residual << ","
-                        << features[i].firstDifference << ","
-                        << score << ","
-                        << (isAnomaly[i] ? 1 : 0) << "\n";
-                }
-                file.close();
-                system("start features.csv");
-            }
         }
 
         if (ImGui::Button("Run DBSCAN")) {
