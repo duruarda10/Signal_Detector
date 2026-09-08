@@ -168,6 +168,7 @@
     <ClCompile Include="OCSVM.cpp" />
     <ClCompile Include="SignalPipeline.cpp" />
     <ClCompile Include="SineGenerator.cpp" />
+    <ClCompile Include="TypeClassifier.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="DBSCAN.h" />
@@ -178,6 +179,7 @@
     <ClInclude Include="OCSVM.h" />
     <ClInclude Include="SignalPipeline.h" />
     <ClInclude Include="SineGenerator.h" />
+    <ClInclude Include="TypeClassifier.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -8,6 +8,7 @@
 #include "FeatureExtractor.h"
 #include "DBSCAN.h"
 #include "OCSVM.h"
+#include "TypeClassifier.h"
 
 #include <GLFW/glfw3.h>
 #include <vector>
@@ -69,6 +70,9 @@ int main() {
     dlib::decision_function<kernel_type> ocsvmModel;
     NormalizerStats ocsvmStats;
 	bool modelLoaded = loadOCSVMModel("ocsvm_model.dat", ocsvmModel, ocsvmStats);
+
+    TypeClassifierModel typeClassifier;
+    bool typeClassifierLoaded = loadTypeClassifier("type_classifier.dat", typeClassifier);
 
     const float sampleRate = 100.0f;
     const float durationSeconds = 300.0f;
@@ -168,6 +172,65 @@ int main() {
         if (!trainStatus.empty()) {
             ImGui::Text("%s", trainStatus.c_str());
         }
+
+        if (ImGui::Button("Train Type Classifier")) {
+            try {
+                std::vector<LabeledSample> labeledData;
+                const int signalsPerType = 20;
+                const int windowSize = 50;
+                const int extendedSize = bufferSize + windowSize;
+
+                AnomalyType typesToTrain[3] = { AnomalyType::Spike, AnomalyType::Stuck, AnomalyType::Drift };
+
+                for (AnomalyType t : typesToTrain) {
+                    for (int s = 0; s < signalsPerType; s++) {
+                        float freqT, ampT, phaseT, noiseT;
+                        randomizeWave(randomGen, freqT, ampT, phaseT, noiseT);
+                        gen.setFrequency(freqT);
+                        gen.setAmplitude(ampT);
+                        gen.setPhase(phaseT);
+                        noise.setStdDev(noiseT);
+
+                        int spikeStartT = bufferSize / 2, spikeDurT = 20, stuckStartT = bufferSize / 2, stuckDurT = 200, driftStartT = bufferSize / 2, driftDurT = 1000;
+                        float spikeMagT = 3.0f, driftRateT = 0.005f;
+
+                        std::vector<float> sig, clean;
+                        std::vector<bool> anomFlags;
+
+                        generateSignal(sig, clean, anomFlags, gen, noise, extendedSize, t,
+                            spikeStartT, spikeMagT, spikeDurT,
+                            stuckStartT, stuckDurT,
+                            driftRateT, driftStartT, driftDurT);
+
+                        std::vector<FeatureVector> feat = extractFeatures(sig, clean, windowSize);
+                        feat.erase(feat.begin(), feat.begin() + windowSize);
+                        anomFlags.erase(anomFlags.begin(), anomFlags.begin() + windowSize);
+
+                        unsigned long label = (t == AnomalyType::Spike) ? 1 : (t == AnomalyType::Stuck) ? 2 : 3;
+
+                        for (int i = 0; i < (int)feat.size(); i++) {
+                            if (anomFlags[i]) {
+                                labeledData.push_back({ feat[i], label });
+                            }
+                        }
+                    }
+                }
+
+                if (labeledData.empty()) {
+                    trainStatus = "Type classifier training failed: no labeled data";
+                }
+                else {
+                    typeClassifier = trainTypeClassifier(labeledData, ocsvmStats, ocsvmNu, ocsvmGamma, residualWeight);
+                    saveTypeClassifier("type_classifier.dat", typeClassifier);
+                    typeClassifierLoaded = true;
+                    trainStatus = "Type classifier trained: " + std::to_string(labeledData.size()) + " labeled samples";
+                }
+            }
+            catch (std::exception& e) {
+                trainStatus = std::string("Type classifier training failed: ") + e.what();
+            }
+        }
+
         
         if (ImGui::Button("Generate Signal")) {
             float freqToUse, ampToUse, phaseToUse, noiseToUse;
@@ -299,8 +362,27 @@ int main() {
                         ocY.push_back((double)signal[i]);
                     }
                 }
-                if (!ocX.empty()) {
-                    ImPlot::PlotScatter("OCSVM Anomalies", ocX.data(), ocY.data(), (int)ocX.size());
+                if (typeClassifierLoaded && !ocX.empty()) {
+                    std::vector<std::pair<int, int>> runs; 
+                    int runStart = 0;
+                    for (int i = 1; i <= (int)ocX.size(); i++) {
+                        bool isBreak = (i == (int)ocX.size()) || (ocX[i] - ocX[i - 1] > 1.0);
+                        if (isBreak) {
+                            runs.push_back({ runStart, i - runStart });
+                            runStart = i;
+                        }
+                    }
+
+                    int bestRun = 0;
+                    for (int i = 1; i < (int)runs.size(); i++) {
+                        if (runs[i].second > runs[bestRun].second) bestRun = i;
+                    }
+
+                    int startIdx = (int)ocX[runs[bestRun].first];
+                    unsigned long predictedLabel = predictType(features[startIdx], ocsvmStats, typeClassifier, residualWeight);
+                    double labelX = ocX[runs[bestRun].first];
+                    double labelY = ocY[runs[bestRun].first] + 1.0;
+                    ImPlot::Annotation(labelX, labelY, ImVec4(1, 1, 1, 1), ImVec2(0, -10), true, "%s", typeLabelToString(predictedLabel));
                 }
             }
 
