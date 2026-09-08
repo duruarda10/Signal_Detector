@@ -61,10 +61,14 @@ int main() {
     int dbscanMinPts = 7;
     std::vector<int> dbscanLabels;
 
-    float ocsvmNu = 0.02f;
-    float ocsvmGamma = 0.1f;
-    float ocsvmThreshold = -0.5f;
+    float ocsvmNu = 0.001f;
+    float ocsvmGamma = 0.05f;
+    float ocsvmThreshold = -0.2f;
     std::vector<double> ocsvmScores;
+
+    dlib::decision_function<kernel_type> ocsvmModel;
+    NormalizerStats ocsvmStats;
+	bool modelLoaded = loadOCSVMModel("ocsvm_model.dat", ocsvmModel, ocsvmStats);
 
     const float sampleRate = 100.0f;
     const float durationSeconds = 300.0f;
@@ -77,7 +81,7 @@ int main() {
     int stuckStart = bufferSize / 2;
     int stuckDuration = 50;
 
-    float driftRate = 0.01f;
+    float driftRate = 0.05f;
     int driftStart = bufferSize / 2;
     int driftDuration = 500;
 
@@ -100,13 +104,77 @@ int main() {
         ImGui::SliderInt("DBSCAN MinPts", &dbscanMinPts, 2, 20);
 
         ImGui::SliderFloat("OCSVM Nu", &ocsvmNu, 0.001f, 0.5f);
-        ImGui::SliderFloat("OCSVM Gamma", &ocsvmGamma, 0.1f, 10.0f);
+        ImGui::SliderFloat("OCSVM Gamma", &ocsvmGamma, 0.01f, 10.0f);
         ImGui::SliderFloat("OCSVM Threshold", &ocsvmThreshold, -5.0f, 5.0f);
 
         ImGui::SliderFloat("Residual Weight", &residualWeight, 1.0f, 10.0f);
 
         ImGui::Separator();
 
+        static std::string trainStatus;
+
+        if (ImGui::Button("Train OCSVM Model (10 signals)")) {
+            try {
+                std::vector<FeatureVector> trainingFeatures;
+                const int trainingSignals = 10;
+                const int windowSize = 50;
+                const int extendedSize = bufferSize + windowSize;
+
+                for (int s = 0; s < trainingSignals; s++) {
+                    float freqT, ampT, phaseT, noiseT;
+                    randomizeWave(randomGen, freqT, ampT, phaseT, noiseT);
+                    gen.setFrequency(freqT);
+                    gen.setAmplitude(ampT);
+                    gen.setPhase(phaseT);
+                    noise.setStdDev(noiseT);
+
+                    std::vector<float> sig, clean;
+                    std::vector<bool> anomFlags;
+                    AnomalyType none = AnomalyType::None;
+
+                    generateSignal(sig, clean, anomFlags, gen, noise, extendedSize, none,
+                        0, 0.0f, 0,
+                        0, 0,
+                        0.0f, 0, 0);
+
+                    std::vector<FeatureVector> feat = extractFeatures(sig, clean, windowSize);
+                    feat.erase(feat.begin(), feat.begin() + windowSize);
+
+                    trainingFeatures.insert(trainingFeatures.end(), feat.begin(), feat.end());
+                }
+
+                trainStatus = "Collected " + std::to_string(trainingFeatures.size()) + " training samples";
+
+                if (trainingFeatures.empty()) {
+                    trainStatus += " — ABORTING, no data to train on";
+                }
+                else {
+                    trainStatus = "Collected " + std::to_string(trainingFeatures.size()) + " training samples";
+
+                    const size_t maxTrainingSamples = 3000;
+                    if (trainingFeatures.size() > maxTrainingSamples) {
+                        std::shuffle(trainingFeatures.begin(), trainingFeatures.end(), randomGen);
+                        trainingFeatures.resize(maxTrainingSamples);
+                        trainStatus += " (subsampled to " + std::to_string(maxTrainingSamples) + ")";
+                    }
+
+
+                    ocsvmStats = Normalizer::fit(trainingFeatures);
+                    ocsvmModel = trainGlobalOCSVM(trainingFeatures, ocsvmStats, ocsvmNu, ocsvmGamma, residualWeight);
+                    saveOCSVMModel("ocsvm_model.dat", ocsvmModel, ocsvmStats);
+                    modelLoaded = true;
+                    trainStatus += " — training succeeded";
+                }
+            }
+            catch (std::exception& e) {
+                trainStatus = std::string("Training failed: ") + e.what();
+            }
+        }
+
+        if (!trainStatus.empty()) {
+            ImGui::Text("%s", trainStatus.c_str());
+        }
+        
         if (ImGui::Button("Generate Signal")) {
             float freqToUse, ampToUse, phaseToUse, noiseToUse;
             randomizeWave(randomGen, freqToUse, ampToUse, phaseToUse, noiseToUse);
@@ -161,8 +229,9 @@ int main() {
                 ImGui::Text("Failed to open file!");
             }
             else {
-                file << "index,rawValue,rollingMean,rollingStdDev,rateOfChange,zScore,residual,firstDifference,isAnomaly\n";
+                file << "index,rawValue,rollingMean,rollingStdDev,rateOfChange,zScore,residual,firstDifference,ocsvmScore,isAnomaly\n";
                 for (int i = 0; i < (int)features.size(); i++) {
+                    double score = (i < (int)ocsvmScores.size()) ? ocsvmScores[i] : std::numeric_limits<double>::quiet_NaN();
                     file << i << ","
                         << features[i].rawValue << ","
                         << features[i].rollingAverage << ","
@@ -171,6 +240,7 @@ int main() {
                         << features[i].zScore << ","
                         << features[i].residual << ","
                         << features[i].firstDifference << ","
+                        << score << ","
                         << (isAnomaly[i] ? 1 : 0) << "\n";
                 }
                 file.close();
@@ -182,8 +252,8 @@ int main() {
             dbscanLabels = runDBSCAN(features, dbscanEpsilon, dbscanMinPts, residualWeight);
         }
 
-        if (ImGui::Button("Run OCSVM")) {
-            ocsvmScores = runOCSVMPerCluster(features, dbscanLabels, ocsvmNu, ocsvmGamma, residualWeight);
+        if (ImGui::Button("Run OCSVM") && modelLoaded) {
+            ocsvmScores = scoreWithModel(features, ocsvmStats, ocsvmModel, residualWeight);
         }
 
         if (!dbscanLabels.empty()) {
@@ -212,12 +282,15 @@ int main() {
 
         if (!ocsvmScores.empty()) {
             int genuineOcsvmFlags = 0;
+            double minScore = std::numeric_limits<double>::infinity();
             for (int i = 0; i < (int)ocsvmScores.size(); i++) {
-                if (!std::isnan(ocsvmScores[i]) && ocsvmScores[i] < ocsvmThreshold) {
-                    genuineOcsvmFlags++;
+                if (!std::isnan(ocsvmScores[i])) {
+                    if (ocsvmScores[i] < ocsvmThreshold) genuineOcsvmFlags++;
+                    if (ocsvmScores[i] < minScore) minScore = ocsvmScores[i];
                 }
             }
-            ImGui::Text("Genuine OCSVM anomalies (within clusters): %d", genuineOcsvmFlags);
+            ImGui::Text("Genuine OCSVM anomalies: %d", genuineOcsvmFlags);
+            ImGui::Text("Min score in signal: %.4f (threshold: %.4f)", minScore, ocsvmThreshold);
         }
 
         if (ImPlot::BeginPlot("Sine Wave", ImVec2(-1, 600))) {

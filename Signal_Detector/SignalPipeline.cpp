@@ -70,10 +70,10 @@ void randomizeAnomaly(std::mt19937& randomGen, int bufferSize, AnomalyType& sele
     std::uniform_int_distribution<int> anomalyDuration(50, 2000);
     stuckDuration = anomalyDuration(randomGen);
 
-    std::uniform_real_distribution<float> anomalyRate(0.0001f, 0.002f);
+    std::uniform_real_distribution<float> anomalyRate(0.0002f, 0.01f);
     driftRate = anomalyRate(randomGen);
 
-    std::uniform_int_distribution<int> driftDurationDist(100, 1000);
+    std::uniform_int_distribution<int> driftDurationDist(500, 2000);
     driftDuration = driftDurationDist(randomGen);
 }
 

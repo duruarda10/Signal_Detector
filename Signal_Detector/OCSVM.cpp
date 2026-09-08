@@ -1,57 +1,48 @@
 #include "OCSVM.h"
-#include "Normalizer.h"
-
-#include <dlib/svm.h>
-#include <map>
-#include <limits>
+#include <fstream>
 #include <algorithm>
 
-typedef dlib::matrix<double, 7, 1> sample_type;
-typedef dlib::radial_basis_kernel<sample_type> kernel_type;
+static sample_type toSample(const NormalizedFeatureVector& nfv) {
+    sample_type m;
+    for (int j = 0; j < 6; j++) m(j) = nfv.values[j];
+    m(6) = std::clamp((double)nfv.values[6], -5.0, 5.0);
+    return m;
+}
 
-std::vector<double> runOCSVMPerCluster(const std::vector<FeatureVector>& features, const std::vector<int>& clusterLabels, double nu, double gamma, float residualWeight) {
-	Normalizer normalizer;
-	std::vector<NormalizedFeatureVector> normalized = normalizer.normalize(features, residualWeight);
+dlib::decision_function<kernel_type> trainGlobalOCSVM(const std::vector<FeatureVector>& trainingFeatures, const NormalizerStats& stats, double nu, double gamma, float residualWeight) {
+    std::vector<NormalizedFeatureVector> normalized = Normalizer::apply(trainingFeatures, stats, residualWeight);
 
-	int n = (int)normalized.size();
-	std::vector<sample_type> samples(n);
-	for (int i = 0; i < n; i++) {
-		sample_type m;
-		for (int j = 0; j < 7; j++) {
-			m(j) = normalized[i].values[j];
-		}
-		samples[i] = m;
-	}
-	std::vector<double> scores(n, std::numeric_limits<double>::quiet_NaN());
+    std::vector<sample_type> samples;
+    samples.reserve(normalized.size());
+    for (auto& nfv : normalized) samples.push_back(toSample(nfv));
 
-	std::map<int, std::vector<int>> clusterToIndices;
-	for (int i = 0; i < n; i++) {
-		if (clusterLabels[i] != -1) {
-			clusterToIndices[clusterLabels[i]].push_back(i);
-		}	
-	}
+    dlib::svm_one_class_trainer<kernel_type> trainer;
+    trainer.set_nu(std::clamp(nu, 0.001, 0.5));
+    trainer.set_kernel(kernel_type(gamma));
 
-	for (auto& entry : clusterToIndices) {
-		std::vector<int>& indices = entry.second;
-		
-		if ((int)indices.size() < 5) {
-			continue;
-		}
+    return trainer.train(samples);
+}
 
-		std::vector<sample_type> clusterSamples;
-		for (int idx : indices) clusterSamples.push_back(samples[idx]);
+std::vector<double> scoreWithModel(const std::vector<FeatureVector>& features, const NormalizerStats& stats, const dlib::decision_function<kernel_type>& model, float residualWeight) {
+    std::vector<NormalizedFeatureVector> normalized = Normalizer::apply(features, stats, residualWeight);
 
-		int clusterSize = static_cast<int>(indices.size());
-		double minNu = 2.0 / clusterSize;
-		double effectiveNu = std::clamp(nu, minNu, 0.99);
+    std::vector<double> scores(normalized.size());
+    for (size_t i = 0; i < normalized.size(); i++) {
+        scores[i] = model(toSample(normalized[i]));
+    }
+    return scores;
+}
 
-		dlib::svm_one_class_trainer<kernel_type> trainer;
-		trainer.set_nu(effectiveNu);
-		trainer.set_kernel(kernel_type(gamma));
+void saveOCSVMModel(const std::string& path, const dlib::decision_function<kernel_type>& model, const NormalizerStats& stats) {
+    std::ofstream out(path, std::ios::binary);
+    dlib::serialize(model, out);
+    out.write(reinterpret_cast<const char*>(&stats), sizeof(NormalizerStats));
+}
 
-		dlib::decision_function<kernel_type> df = trainer.train(clusterSamples);
-		
-		for (int idx : indices) scores[idx] = df(samples[idx]);
-	}
-	return scores;
+bool loadOCSVMModel(const std::string& path, dlib::decision_function<kernel_type>& model, NormalizerStats& stats) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in.is_open()) return false;
+    dlib::deserialize(model, in);
+    in.read(reinterpret_cast<char*>(&stats), sizeof(NormalizerStats));
+    return true;
 }
