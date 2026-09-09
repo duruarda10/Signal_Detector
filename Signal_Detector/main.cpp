@@ -72,7 +72,7 @@ int main() {
 
     dlib::decision_function<kernel_type> ocsvmModel;
     NormalizerStats ocsvmStats;
-	bool modelLoaded = loadOCSVMModel("ocsvm_model.dat", ocsvmModel, ocsvmStats);
+    bool modelLoaded = loadOCSVMModel("ocsvm_model.dat", ocsvmModel, ocsvmStats);
 
     TypeClassifierModel typeClassifier;
     bool typeClassifierLoaded = loadTypeClassifier("type_classifier.dat", typeClassifier);
@@ -107,20 +107,20 @@ int main() {
 
         ImGui::Begin("Signal Viewer", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
 
-        ImGui::SliderFloat("DBSCAN Epsilon", &dbscanEpsilon, 0.1f, 5.0f);
-        ImGui::SliderInt("DBSCAN MinPts", &dbscanMinPts, 2, 20);
+        if (ImGui::CollapsingHeader("Configuration")) {
+            ImGui::SliderFloat("DBSCAN Epsilon", &dbscanEpsilon, 0.1f, 5.0f);
+            ImGui::SliderInt("DBSCAN MinPts", &dbscanMinPts, 2, 20);
 
-        ImGui::SliderFloat("OCSVM Nu", &ocsvmNu, 0.001f, 0.5f);
-        ImGui::SliderFloat("OCSVM Gamma", &ocsvmGamma, 0.01f, 10.0f);
-        ImGui::SliderFloat("OCSVM Threshold", &ocsvmThreshold, -5.0f, 5.0f);
-
-        ImGui::SliderFloat("Residual Weight", &residualWeight, 1.0f, 10.0f);
+            ImGui::SliderFloat("OCSVM Nu", &ocsvmNu, 0.001f, 0.5f);
+            ImGui::SliderFloat("OCSVM Gamma", &ocsvmGamma, 0.01f, 10.0f);
+            ImGui::SliderFloat("OCSVM Threshold", &ocsvmThreshold, -5.0f, 5.0f);
+        }
 
         ImGui::Separator();
 
         static std::string trainStatus;
 
-        if (ImGui::Button("Train OCSVM Model")) {
+        if (ImGui::Button("Train Models")) {
             try {
                 std::vector<FeatureVector> trainingFeatures;
                 const int trainingSignals = 50;
@@ -164,7 +164,55 @@ int main() {
                     ocsvmModel = trainGlobalOCSVM(trainingFeatures, ocsvmStats, ocsvmNu, ocsvmGamma, residualWeight);
                     saveOCSVMModel("ocsvm_model.dat", ocsvmModel, ocsvmStats);
                     modelLoaded = true;
-                    trainStatus = "Training completed: " + std::to_string(trainingSignals) + " signals";
+
+                    std::vector<LabeledSample> labeledData;
+                    const int signalsPerType = 20;
+
+                    AnomalyType typesToTrain[3] = { AnomalyType::Spike, AnomalyType::Stuck, AnomalyType::Drift };
+
+                    for (AnomalyType t : typesToTrain) {
+                        for (int s = 0; s < signalsPerType; s++) {
+                            float freqT, ampT, phaseT, noiseT;
+                            randomizeWave(randomGen, freqT, ampT, phaseT, noiseT);
+                            gen.setFrequency(freqT);
+                            gen.setAmplitude(ampT);
+                            gen.setPhase(phaseT);
+                            noise.setStdDev(noiseT);
+
+                            int spikeStartT = bufferSize / 2, spikeDurT = 20, stuckStartT = bufferSize / 2, stuckDurT = 200, driftStartT = bufferSize / 2, driftDurT = 1000;
+                            float spikeMagT = 3.0f, driftRateT = 0.005f;
+
+                            std::vector<float> sig, clean;
+                            std::vector<bool> anomFlags;
+
+                            generateSignal(sig, clean, anomFlags, gen, noise, extendedSize, t,
+                                spikeStartT, spikeMagT, spikeDurT,
+                                stuckStartT, stuckDurT,
+                                driftRateT, driftStartT, driftDurT);
+
+                            std::vector<FeatureVector> feat = extractFeatures(sig, clean, windowSize);
+                            feat.erase(feat.begin(), feat.begin() + windowSize);
+                            anomFlags.erase(anomFlags.begin(), anomFlags.begin() + windowSize);
+
+                            unsigned long label = (t == AnomalyType::Spike) ? 1 : (t == AnomalyType::Stuck) ? 2 : 3;
+
+                            for (int i = 0; i < (int)feat.size(); i++) {
+                                if (anomFlags[i]) {
+                                    labeledData.push_back({ feat[i], label });
+                                }
+                            }
+                        }
+                    }
+
+                    if (labeledData.empty()) {
+                        trainStatus = "OCSVM trained, type classifier failed: no labeled data";
+                    }
+                    else {
+                        typeClassifier = trainTypeClassifier(labeledData, ocsvmStats, ocsvmNu, ocsvmGamma, residualWeight);
+                        saveTypeClassifier("type_classifier.dat", typeClassifier);
+                        typeClassifierLoaded = true;
+                        trainStatus = "Training completed: OCSVM (" + std::to_string(trainingSignals) + " signals) + Type Classifier (" + std::to_string(labeledData.size()) + " samples)";
+                    }
                 }
             }
             catch (std::exception& e) {
@@ -176,66 +224,6 @@ int main() {
             ImGui::Text("%s", trainStatus.c_str());
         }
 
-        if (ImGui::Button("Train Type Classifier")) {
-            try {
-                std::vector<LabeledSample> labeledData;
-                const int signalsPerType = 20;
-                const int windowSize = 50;
-                const int extendedSize = bufferSize + windowSize;
-
-                AnomalyType typesToTrain[3] = { AnomalyType::Spike, AnomalyType::Stuck, AnomalyType::Drift };
-
-                for (AnomalyType t : typesToTrain) {
-                    for (int s = 0; s < signalsPerType; s++) {
-                        float freqT, ampT, phaseT, noiseT;
-                        randomizeWave(randomGen, freqT, ampT, phaseT, noiseT);
-                        gen.setFrequency(freqT);
-                        gen.setAmplitude(ampT);
-                        gen.setPhase(phaseT);
-                        noise.setStdDev(noiseT);
-
-                        int spikeStartT = bufferSize / 2, spikeDurT = 20, stuckStartT = bufferSize / 2, stuckDurT = 200, driftStartT = bufferSize / 2, driftDurT = 1000;
-                        float spikeMagT = 3.0f, driftRateT = 0.005f;
-
-                        std::vector<float> sig, clean;
-                        std::vector<bool> anomFlags;
-
-                        generateSignal(sig, clean, anomFlags, gen, noise, extendedSize, t,
-                            spikeStartT, spikeMagT, spikeDurT,
-                            stuckStartT, stuckDurT,
-                            driftRateT, driftStartT, driftDurT);
-
-                        std::vector<FeatureVector> feat = extractFeatures(sig, clean, windowSize);
-                        feat.erase(feat.begin(), feat.begin() + windowSize);
-                        anomFlags.erase(anomFlags.begin(), anomFlags.begin() + windowSize);
-
-                        unsigned long label = (t == AnomalyType::Spike) ? 1 : (t == AnomalyType::Stuck) ? 2 : 3;
-
-                        for (int i = 0; i < (int)feat.size(); i++) {
-                            if (anomFlags[i]) {
-                                labeledData.push_back({ feat[i], label });
-                            }
-                        }
-                    }
-                }
-
-                if (labeledData.empty()) {
-                    trainStatus = "Type classifier training failed: no labeled data";
-                }
-                else {
-                    typeClassifier = trainTypeClassifier(labeledData, ocsvmStats, ocsvmNu, ocsvmGamma, residualWeight);
-                    saveTypeClassifier("type_classifier.dat", typeClassifier);
-                    typeClassifierLoaded = true;
-                    trainStatus = "Type classifier trained: " + std::to_string(labeledData.size()) + " labeled samples";
-                }
-            }
-            catch (std::exception& e) {
-                trainStatus = std::string("Type classifier training failed: ") + e.what();
-            }
-        }
-
-        ImGui::Combo("Anomaly Type", &selectedAnomalyOption, anomalyOptions, IM_ARRAYSIZE(anomalyOptions));
-        
         if (ImGui::Button("Generate Signal")) {
             float freqToUse, ampToUse, phaseToUse, noiseToUse;
             randomizeWave(randomGen, freqToUse, ampToUse, phaseToUse, noiseToUse);
@@ -288,12 +276,22 @@ int main() {
             ocsvmScores.clear();
         }
 
+        ImGui::SameLine();
+
+        ImGui::SetNextItemWidth(100.0f);
+        ImGui::Combo("Anomaly Type", &selectedAnomalyOption, anomalyOptions, IM_ARRAYSIZE(anomalyOptions));
+
         if (ImGui::Button("Run DBSCAN")) {
             dbscanLabels = runDBSCAN(features, dbscanEpsilon, dbscanMinPts, residualWeight);
         }
 
+        ImGui::SameLine();
+
         if (ImGui::Button("Run OCSVM") && modelLoaded) {
             ocsvmScores = scoreWithModel(features, ocsvmStats, ocsvmModel, residualWeight);
+        }
+        if (!modelLoaded) {
+            ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.2f, 1.0f), "No trained model loaded — click Train Models first.");
         }
 
         if (!dbscanLabels.empty()) {
@@ -370,8 +368,13 @@ int main() {
                         ocY.push_back((double)signal[i]);
                     }
                 }
+
+                if (!ocX.empty()) {
+                    ImPlot::PlotScatter("OCSVM Anomalies", ocX.data(), ocY.data(), (int)ocX.size());
+                }
+
                 if (typeClassifierLoaded && !ocX.empty()) {
-                    std::vector<std::pair<int, int>> runs; 
+                    std::vector<std::pair<int, int>> runs;
                     int runStart = 0;
                     for (int i = 1; i <= (int)ocX.size(); i++) {
                         bool isBreak = (i == (int)ocX.size()) || (ocX[i] - ocX[i - 1] > 1.0);
