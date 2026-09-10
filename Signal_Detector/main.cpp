@@ -67,7 +67,7 @@ int main() {
 
     float ocsvmNu = 0.001f;
     float ocsvmGamma = 0.05f;
-    float ocsvmThreshold = -0.2f;
+    float ocsvmThreshold = 0.0f;
     std::vector<double> ocsvmScores;
 
     dlib::decision_function<kernel_type> ocsvmModel;
@@ -123,7 +123,7 @@ int main() {
         if (ImGui::Button("Train Models")) {
             try {
                 std::vector<FeatureVector> trainingFeatures;
-                const int trainingSignals = 50;
+                const int trainingSignals = 75;
                 const int windowSize = 50;
                 const int extendedSize = bufferSize + windowSize;
 
@@ -208,8 +208,7 @@ int main() {
                         trainStatus = "OCSVM trained, type classifier failed: no labeled data";
                     }
                     else {
-                        typeClassifier = trainTypeClassifier(labeledData, ocsvmStats, ocsvmNu, ocsvmGamma, residualWeight);
-                        saveTypeClassifier("type_classifier.dat", typeClassifier);
+                        typeClassifier = trainTypeClassifier(labeledData, ocsvmStats, ocsvmModel, ocsvmNu, ocsvmGamma, residualWeight);                        saveTypeClassifier("type_classifier.dat", typeClassifier);
                         typeClassifierLoaded = true;
                         trainStatus = "Training completed: OCSVM (" + std::to_string(trainingSignals) + " signals) + Type Classifier (" + std::to_string(labeledData.size()) + " samples)";
                     }
@@ -361,6 +360,41 @@ int main() {
             }
 
             if (!ocsvmScores.empty() && ocsvmScores.size() == signal.size()) {
+                float baseOcsvmThreshold = ocsvmThreshold;
+                std::vector<double> roughX, roughY;
+                for (int i = 0; i < (int)ocsvmScores.size(); i++) {
+                    if (!std::isnan(ocsvmScores[i]) && ocsvmScores[i] < baseOcsvmThreshold) {
+                        roughX.push_back((double)i);
+                        roughY.push_back((double)signal[i]);
+                    }
+                }
+
+                unsigned long predictedLabel = 0;
+                int labelSampleIdx = -1;
+
+                if (typeClassifierLoaded && !roughX.empty()) {
+                    std::vector<std::pair<int, int>> runs;
+                    int runStart = 0;
+                    for (int i = 1; i <= (int)roughX.size(); i++) {
+                        bool isBreak = (i == (int)roughX.size()) || (roughX[i] - roughX[i - 1] > 1.0);
+                        if (isBreak) {
+                            runs.push_back({ runStart, i - runStart });
+                            runStart = i;
+                        }
+                    }
+                    int bestRun = 0;
+                    for (int i = 1; i < (int)runs.size(); i++) {
+                        if (runs[i].second > runs[bestRun].second) bestRun = i;
+                    }
+
+                    int startIdx = (int)roughX[runs[bestRun].first];
+                    labelSampleIdx = startIdx;
+                    predictedLabel = predictType(features[startIdx], ocsvmStats, typeClassifier, residualWeight);
+
+                    double typeThreshold = thresholdForType(typeClassifier, predictedLabel, baseOcsvmThreshold);
+                    ocsvmThreshold = std::min((float)typeThreshold, baseOcsvmThreshold);
+                }
+
                 std::vector<double> ocX, ocY;
                 for (int i = 0; i < (int)ocsvmScores.size(); i++) {
                     if (!std::isnan(ocsvmScores[i]) && ocsvmScores[i] < ocsvmThreshold) {
@@ -372,27 +406,9 @@ int main() {
                 if (!ocX.empty()) {
                     ImPlot::PlotScatter("OCSVM Anomalies", ocX.data(), ocY.data(), (int)ocX.size());
                 }
-
-                if (typeClassifierLoaded && !ocX.empty()) {
-                    std::vector<std::pair<int, int>> runs;
-                    int runStart = 0;
-                    for (int i = 1; i <= (int)ocX.size(); i++) {
-                        bool isBreak = (i == (int)ocX.size()) || (ocX[i] - ocX[i - 1] > 1.0);
-                        if (isBreak) {
-                            runs.push_back({ runStart, i - runStart });
-                            runStart = i;
-                        }
-                    }
-
-                    int bestRun = 0;
-                    for (int i = 1; i < (int)runs.size(); i++) {
-                        if (runs[i].second > runs[bestRun].second) bestRun = i;
-                    }
-
-                    int startIdx = (int)ocX[runs[bestRun].first];
-                    unsigned long predictedLabel = predictType(features[startIdx], ocsvmStats, typeClassifier, residualWeight);
-                    double labelX = ocX[runs[bestRun].first];
-                    double labelY = ocY[runs[bestRun].first] + 1.0;
+                if (predictedLabel != 0 && labelSampleIdx >= 0 && labelSampleIdx < (int)signal.size()) {
+                    double labelX = (double)labelSampleIdx;
+                    double labelY = (double)signal[labelSampleIdx] + 1.0;
                     ImPlot::Annotation(labelX, labelY, ImVec4(1, 1, 1, 1), ImVec2(0, -10), true, "%s", typeLabelToString(predictedLabel));
                 }
             }
