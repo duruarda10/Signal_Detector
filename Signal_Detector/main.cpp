@@ -67,7 +67,7 @@ int main() {
 
     float ocsvmNu = 0.001f;
     float ocsvmGamma = 0.05f;
-    float ocsvmThreshold = 0.0f;
+    float ocsvmThreshold = -0.1f;
     std::vector<double> ocsvmScores;
 
     dlib::decision_function<kernel_type> ocsvmModel;

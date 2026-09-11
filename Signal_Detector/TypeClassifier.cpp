@@ -24,7 +24,7 @@ static double computeOcsvmThresholdForType(const std::vector<sample_type>& sampl
     for (auto& s : samples) scores.push_back(globalOcsvmModel(s));
     std::sort(scores.begin(), scores.end());
 
-    size_t idx = (size_t)(scores.size() * 0.7);
+    size_t idx = (size_t)(scores.size() * 0.74);
     if (idx >= scores.size()) idx = scores.size() - 1;
     return scores[idx];
 }
